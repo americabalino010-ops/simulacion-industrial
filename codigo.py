@@ -58,7 +58,7 @@ elif st.session_state.faceta == 'parametros':
     if st.button("⬅️ Volver"):
         cambiar_faceta('presentacion')
 
-# --- FACETA 3: SIMULACIÓN Y RESULTADOS ---
+# --- FACETA 3: SIMULACIÓN Y RESULTADOS (VERSIÓN FINAL CON DESCARGA) ---
 elif st.session_state.faceta == 'simulacion':
     d = st.session_state.datos_sim
     st.title("📊 Monitor de Producción en Vivo")
@@ -71,52 +71,89 @@ elif st.session_state.faceta == 'simulacion':
 
     # Layout de la planta
     st.write("---")
-    estaciones = st.columns(3)
-    v_corte = estaciones.empty()
-    v_trans = estaciones.empty()
-    v_ensam = estaciones.empty()
+    col_a, col_b, col_c = st.columns(3) 
+    v_corte = col_a.empty()
+    v_trans = col_b.empty()
+    v_ensam = col_c.empty()
     
     log_eventos = st.empty()
 
-    # Lógica de simulación
-    buenas, fallas, dinero, scrap = 0, 0, 0, 0
+    # Variables para el reporte y lógica
+    historial = []
+    buenas, fallas, dinero = 0, 0, 0
     
     for i in range(1, int(d['n_lote']) + 1):
         sku = f"PZ-{100+i}"
         costo_pz = d['c_mat']
         
-        # Simulación de Flujo
-        v_corte.info(f"🗜️ CORTE\n{sku}")
+        # 1. Fase de Corte
+        v_corte.info(f"🗜️ **CORTE**\n\nProcesando: {sku}")
+        v_trans.write("---")
+        v_ensam.write("---")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        v_corte.write("🗜️ LIBRE")
-        v_trans.warning(f"🚚 MOVIMIENTO\n{sku}")
+        # 2. Fase de Tránsito
+        v_corte.success("🗜️ **CORTE**\n\nEsperando...")
+        v_trans.warning(f"🚚 **MOVIMIENTO**\n\n{sku}")
         time.sleep(1)
         
+        # 3. Fase de Ensamble
         v_trans.write("---")
-        v_ensam.info(f"🤖 ENSAMBLE\n{sku}")
+        v_ensam.info(f"🤖 **ENSAMBLE**\n\nProcesando: {sku}")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        # Calidad
+        # Calidad y Resultados
+        v_ensam.success("🤖 **ENSAMBLE**\n\nListo")
         error = (np.random.random() * 100) < d['fallo_p']
+        
         if error:
+            res = "RECHAZADA"
             fallas += 1
-            scrap += costo_pz
+            ganancia_pz = 0
             log_eventos.error(f"❌ {sku} RECHAZADA. Pérdida: ${round(costo_pz, 2)}")
         else:
+            res = "OK"
             buenas += 1
-            dinero += (d['p_vta'] - costo_pz)
-            log_eventos.success(f"✅ {sku} OK. Utilidad: ${round(d['p_vta'] - costo_pz, 2)}")
+            ganancia_pz = d['p_vta'] - costo_pz
+            dinero += ganancia_real = ganancia_pz
+            log_eventos.success(f"✅ {sku} OK. Utilidad: ${round(ganancia_pz, 2)}")
+        
+        # Guardar en historial para el CSV
+        historial.append({
+            "SKU": sku, 
+            "Estado": res, 
+            "Costo Acumulado ($)": round(costo_pz, 2), 
+            "Utilidad Real ($)": round(ganancia_pz, 2)
+        })
         
         # Actualizar KPIs
         met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
-        met_oee.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
+        met_oee.metric("Calidad (OEE)", f"{round((buenas/i)*100, 1)}%")
         met_prog.metric("Progreso", f"{i}/{int(d['n_lote'])}")
         
         time.sleep(0.5)
 
     st.balloons()
-    if st.button("🔄 Reiniciar Sistema"):
-        cambiar_faceta('presentacion')
+    st.success("✅ Turno de producción finalizado.")
+
+    # --- SECCIÓN DE DESCARGA Y REINICIO ---
+    df_final = pd.DataFrame(historial)
+    csv = df_final.to_csv(index=False).encode('utf-8')
+    
+    st.write("### 📂 Acciones de Fin de Turno")
+    c_down, c_reset = st.columns(2)
+    
+    with c_down:
+        st.download_button(
+            label="📥 Descargar Reporte Excel (CSV)",
+            data=csv,
+            file_name=f"reporte_produccion_{time.strftime('%Y%m%d-%H%M')}.csv",
+            mime="text/csv",
+        )
+    
+    with c_reset:
+        if st.button("🔄 Reiniciar Sistema"):
+            st.session_state.faceta = 'presentacion'
+            st.rerun()
