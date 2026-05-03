@@ -4,93 +4,131 @@ import plotly.graph_objects as go
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Industrial Digital Twin V9", layout="wide")
-st.title("🏭 Simulador de Planta: Análisis de Costos y Calidad")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Industrial Digital Twin V10", layout="wide")
+st.title("🏭 Simulador de Planta: Animación de Flujo Real")
 
-# --- PANEL LATERAL: CONFIGURACIÓN ---
-st.sidebar.header("🛠️ Diseño de la Línea")
-total_piezas = st.sidebar.number_input("Lote de Producción (piezas)", 5, 100, 10)
+# --- PANEL LATERAL ---
+st.sidebar.header("🛠️ Configuración de la Línea")
+total_piezas = st.sidebar.number_input("Lote de Producción", 5, 50, 10)
 
-with st.sidebar.expander("Estación 1: CORTE"):
-    t_corte = st.slider("Tiempo Ciclo (s)", 1.0, 10.0, 3.0)
-    f_corte = st.slider("Tasa de Error Corte (%)", 0, 15, 2)
+col_c1, col_c2 = st.sidebar.columns(2)
+with col_c1:
+    t_corte = st.slider("Tiempo Corte (s)", 1.0, 10.0, 3.0)
+with col_c2:
+    f_corte = st.slider("Error Corte (%)", 0, 15, 2)
 
-with st.sidebar.expander("Estación 2: ENSAMBLE"):
-    t_ens = st.slider("Tiempo Ciclo (s) ", 1.0, 10.0, 4.0)
-    f_ens = st.slider("Tasa de Error Ensamble (%)", 0, 15, 5)
+col_e1, col_e2 = st.sidebar.columns(2)
+with col_e1:
+    t_ens = st.slider("Tiempo Ensamble (s)", 1.0, 10.0, 4.0)
+with col_e2:
+    f_ens = st.slider("Error Ensamble (%)", 0, 15, 5)
 
 st.sidebar.header("💰 Parámetros Financieros")
-costo_material = st.sidebar.number_input("Costo Materia Prima ($/pz)", 1.0, 100.0, 15.0)
-costo_minuto_maq = st.sidebar.number_input("Costo Operación ($/min)", 1.0, 50.0, 10.0)
-precio_venta = st.sidebar.number_input("Precio de Venta ($/pz)", 10.0, 500.0, 60.0)
+costo_material = st.sidebar.number_input("Costo Material ($/pz)", 1.0, 100.0, 15.0)
+costo_min_maq = st.sidebar.number_input("Costo Máquina ($/min)", 1.0, 50.0, 10.0)
+precio_venta = st.sidebar.number_input("Precio Venta ($/pz)", 10.0, 500.0, 60.0)
 
-# --- INICIO DE SIMULACIÓN ---
-if st.sidebar.button("🚀 Iniciar Producción"):
+# --- FUNCIÓN PARA EL GRÁFICO DE PLANTA ---
+def generar_planta(pos_x, estado_pieza, nombre_pieza):
+    fig = go.Figure()
+    # Dibujar Estaciones (Bases fijas)
+    fig.add_trace(go.Scatter3d(
+        x=[0, 10], y=[0, 0], z=[0, 0],
+        mode='markers+text',
+        text=["ESTACIÓN: CORTE", "ESTACIÓN: ENSAMBLE"],
+        textposition="top center",
+        marker=dict(size=30, symbol='square', color='lightgray', opacity=0.8),
+        name="Maquinaria"
+    ))
+    # Dibujar la Pieza Actual en su posición
+    color_map = {"PROCESO": "blue", "OK": "green", "RECHAZADA": "red"}
+    fig.add_trace(go.Scatter3d(
+        x=[pos_x], y=[0], z=[0.5],
+        mode='markers+text',
+        text=[nombre_pieza],
+        textposition="top center",
+        marker=dict(size=15, color=color_map.get(estado_pieza, "blue"), symbol='diamond'),
+        name="Material"
+    ))
+    # Configuración de cámara y límites (para que no se mueva)
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(range=[-2, 12], title="Línea de Producción"),
+            yaxis=dict(range=[-2, 2], visible=False),
+            zaxis=dict(range=[0, 2], visible=False),
+            aspectmode='manual',
+            aspectratio=dict(x=2, y=0.5, z=0.3)
+        ),
+        margin=dict(l=0, r=0, b=0, t=0), height=500
+    )
+    return fig
+
+# --- EJECUCIÓN ---
+if st.sidebar.button("🚀 Iniciar Turno"):
     col_viz, col_kpi = st.columns([2, 1])
-    
     with col_viz:
-        st.subheader("Vista de Planta 3D")
-        placeholder_3d = st.empty()
-    
+        viz_placeholder = st.empty()
+        status_msg = st.empty()
     with col_kpi:
-        st.subheader("Indicadores Financieros")
-        kpi_ganancia = st.empty()
-        kpi_perdida = st.empty()
-        kpi_eficiencia = st.empty()
-        st.write("---")
-        tabla_log = st.empty()
+        st.subheader("KPIs Financieros")
+        k1, k2 = st.columns(2)
+        utilidad_metrica = k1.empty()
+        perdida_metrica = k2.empty()
+        yield_metrica = st.empty()
+        tabla_resumen = st.empty()
 
-    datos = []
-    total_perdido = 0
-    total_ganado = 0
-    defectuosas = 0
+    historial = []
+    t_ganado, t_perdido, defectuosas = 0, 0, 0
 
     for i in range(1, total_piezas + 1):
-        # Lógica Industrial: ¿Hubo error?
-        error_corte = np.random.random() < (f_corte / 100)
-        error_ens = np.random.random() < (f_ens / 100)
+        nombre = f"P-{i}"
         
-        t_real = (t_corte + t_ens) + np.random.normal(0, 0.2) # Variabilidad real
-        costo_op = (t_real / 60) * costo_minuto_maq # Convertir seg a min para el costo
+        # --- ETAPA 1: CORTE ---
+        status_msg.info(f"⚙️ {nombre}: Entrando a CORTE...")
+        viz_placeholder.plotly_chart(generar_planta(0, "PROCESO", nombre), use_container_width=True)
+        time.sleep(t_corte/4) # Simulación visual rápida
         
-        if error_corte or error_ens:
-            estado = "RECHAZADA"
-            perdida_pz = costo_material + costo_op
-            total_perdido += perdida_pz
-            defectuosas += 1
-            color_pz = "red"
+        error_c = np.random.random() < (f_corte/100)
+        
+        # --- ETAPA 2: ENSAMBLE ---
+        if not error_c:
+            status_msg.warning(f"🔧 {nombre}: Pasando a ENSAMBLE...")
+            viz_placeholder.plotly_chart(generar_planta(10, "PROCESO", nombre), use_container_width=True)
+            time.sleep(t_ens/4)
+            error_e = np.random.random() < (f_ens/100)
         else:
-            estado = "OK"
-            ganancia_pz = precio_venta - (costo_material + costo_op)
-            total_ganado += ganancia_pz
-            color_pz = "green"
+            error_e = False # No llegó a ensamble
 
-        datos.append({"ID": f"P-{i}", "Estado": estado, "T. Total": round(t_real, 2)})
-        df_sim = pd.DataFrame(datos)
-
-        # --- VISUALIZACIÓN 3D ---
-        fig = go.Figure()
-        # Estaciones fijas
-        fig.add_trace(go.Scatter3d(x=[0, 5], y=[0, 0], z=[0, 0], mode='markers+text',
-                     text=["CORTE", "ENSAMBLE"], marker=dict(size=15, symbol='square', color='gray')))
-        # Piezas fluyendo
-        fig.add_trace(go.Scatter3d(x=np.linspace(0, 5, len(df_sim)), y=np.random.normal(0, 0.1, len(df_sim)), 
-                     z=df_sim["T. Total"]/5, mode='markers', 
-                     marker=dict(size=8, color=['red' if e=="RECHAZADA" else 'green' for e in df_sim["Estado"]])))
+        # --- RESULTADO FINAL DE LA PIEZA ---
+        t_total = t_corte + t_ens + np.random.normal(0, 0.2)
+        costo_op = (t_total/60) * costo_min_maq
         
-        fig.update_layout(scene=dict(xaxis_title="Flujo", yaxis_title="Línea", zaxis_title="Tiempo"),
-                          margin=dict(l=0, r=0, b=0, t=0), height=400)
-        placeholder_3d.plotly_chart(fig, use_container_width=True)
+        if error_c or error_e:
+            res, col_p = "RECHAZADA", "red"
+            perdida = costo_material + costo_op
+            t_perdido += perdida
+            defectuosas += 1
+        else:
+            res, col_p = "OK", "green"
+            ganancia = precio_venta - (costo_material + costo_op)
+            t_ganado += ganancia
 
-        # --- ACTUALIZAR KPIS ---
-        kpi_ganancia.metric("Utilidad Total (USD)", f"${round(total_ganado, 2)}", f"{round(total_ganado - total_perdido, 2)} neto")
-        kpi_perdida.metric("Costo de No Calidad (Pérdida)", f"${round(total_perdido, 2)}", f"-{defectuosas} piezas", delta_color="inverse")
-        kpi_eficiencia.metric("Yield (Calidad)", f"{round(((i-defectuosas)/i)*100, 1)}%")
+        historial.append({"ID": nombre, "Estado": res, "Costo Op.": round(costo_op, 2)})
         
-        tabla_log.table(df_sim.tail(5))
-        time.sleep(0.4)
+        # Actualizar Visualización con resultado final
+        pos_final = 0 if error_c else 10
+        viz_placeholder.plotly_chart(generar_planta(pos_final, res, nombre), use_container_width=True)
+        
+        # Actualizar KPIs
+        utilidad_metrica.metric("Utilidad Bruta", f"${round(t_ganado, 2)}")
+        perdida_metrica.metric("Pérdida (Scrap)", f"${round(t_perdido, 2)}", delta_color="inverse")
+        yield_metrica.metric("Calidad (Yield)", f"{round(((i-defectuosas)/i)*100, 1)}%")
+        tabla_resumen.dataframe(pd.DataFrame(historial).tail(5), use_container_width=True)
+        
+        time.sleep(0.5)
 
     st.balloons()
-    st.success(f"Simulación Finalizada. Balance Final: ${round(total_ganado - total_perdido, 2)}")
+    st.success(f"Turno Finalizado. Balance Neto: ${round(t_ganado - t_perdido, 2)}")
+
 
