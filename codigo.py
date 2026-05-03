@@ -1,127 +1,100 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import numpy as np
 import time
+import plotly.express as px
 
-# --- CONFIGURACIÓN RETRO ---
-st.set_page_config(page_title="Pixel Factory 8-Bit", layout="wide")
+# --- CONFIGURACIÓN Y ESTILO ---
+st.set_page_config(page_title="Gestión de Planta Pro", layout="wide")
 
-# Estilo CSS para que se vea más como videojuego (fuente y colores)
 st.markdown("""
     <style>
-    @import url('https://googleapis.com');
-    .pixel-font { font-family: 'Press+Start+2P', cursive; color: #33ff33; }
-    .stApp { background-color: #000000; }
+    .main { background-color: #f8f9fa; }
+    div.stButton > button:first-child { background-color: #007bff; color: white; width: 100%; }
+    .stMetric { background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="pixel-font">🏭 PIXEL FACTORY V15</h1>', unsafe_allow_html=True)
+# --- SIDEBAR: INTERFAZ DE USUARIO ---
+st.sidebar.title("🎮 Panel de Operaciones")
+pos_supervisor = st.sidebar.radio("📍 Supervisión Actual", ["Almacén", "Corte", "Ensamble", "Calidad"])
 
-# --- CONTROLES ---
-st.sidebar.markdown('<p class="pixel-font" style="font-size:12px;">CONTROLES</p>', unsafe_allow_html=True)
-pos_supervisor = st.sidebar.slider("🕹️ MOVER SUPERVISOR", 0, 10, 5)
-lote = st.sidebar.number_input("PIEZAS", 5, 20, 10)
+with st.sidebar.expander("🛠️ Parámetros de Ingeniería"):
+    lote = st.number_input("Tamaño del Lote", 5, 100, 15)
+    t_proceso = st.slider("Velocidad de Línea (s)", 0.5, 5.0, 1.0)
+    prob_error = st.slider("Tasa de Fallo Máxima (%)", 0, 25, 5)
 
-# --- RENDERIZADO PIXEL ART ---
-def generar_pixel_factory(pos_pieza, pos_ing, estado_pz, id_pz):
-    fig = go.Figure()
+# --- CUERPO PRINCIPAL ---
+st.title("🏭 Monitor de Producción en Tiempo Real")
+st.info(f"👷 Supervisor ubicado en: **{pos_supervisor}**")
 
-    # 1. EL SUELO (Piso de rejilla tipo Pacman)
-    fig.add_shape(type="rect", x0=0, y0=0, x1=10, y1=6, fillcolor="#1a1a1a", line_color="#333")
+# Espacios para KPIs
+k1, k2, k3, k4 = st.columns(4)
+utilidad_val = k1.empty()
+yield_val = k2.empty()
+rechazo_val = k3.empty()
+progreso_val = k4.empty()
 
-    # 2. LAS MÁQUINAS (Sprites con Emojis)
-    # Estación Corte
-    fig.add_annotation(x=1, y=3, text="💾", font_size=50, showarrow=False)
-    fig.add_annotation(x=1, y=1, text="CORTE", font_size=12, font_color="cyan", showarrow=False)
+# Contenedor Visual de la Planta
+st.write("### 🧩 Flujo de Proceso")
+v_planta = st.columns([1, 1, 1, 1])
 
-    # Estación Ensamble
-    fig.add_annotation(x=9, y=3, text="🤖", font_size=50, showarrow=False)
-    fig.add_annotation(x=9, y=1, text="ENSAMBLE", font_size=12, font_color="orange", showarrow=False)
-
-    # 3. LA BANDA (Camino de puntos)
-    for dot in range(2, 9):
-        fig.add_annotation(x=dot, y=3, text=".", font_size=20, font_color="white", showarrow=False)
-
-    # 4. LA PIEZA (Sprite dinámico)
-    # Cambia de emoji según el estado
-    sprite_pz = "📦" if estado_pz == "PROCESO" else ("⭐" if estado_pz == "OK" else "💀")
-    fig.add_trace(go.Scatter(
-        x=[pos_pieza], y=[3],
-        mode='text',
-        text=[sprite_pz],
-        textfont=dict(size=40),
-        name="Pieza"
-    ))
-
-    # 5. EL INGENIERO (Mario / Supervisor)
-    fig.add_trace(go.Scatter(
-        x=[pos_ing], y=[5],
-        mode='text',
-        text=["👷"],
-        textfont=dict(size=45),
-        name="Supervisor"
-    ))
-
-    # Ajustes de pantalla de juego
-    fig.update_xaxes(range=[0, 10], showgrid=False, zeroline=False, visible=False)
-    fig.update_yaxes(range=[0, 6], showgrid=False, zeroline=False, visible=False)
-    fig.update_layout(
-        height=400, 
-        paper_bgcolor="black", 
-        plot_bgcolor="black",
-        margin=dict(l=0, r=0, b=0, t=0),
-        showlegend=False
-    )
-    return fig
-
-# --- LOOP DE JUEGO ---
-if st.sidebar.button("▶️ START GAME"):
-    viz = st.empty()
-    col1, col2, col3 = st.columns(3)
-    score_n = col1.empty()
-    score_m = col2.empty()
-    score_y = col3.empty()
-
-    ganado, perdido, fallos = 0, 0, 0
-    # Creamos un contador para generar IDs únicos
-    step_id = 0
-
+# --- LÓGICA DE SIMULACIÓN ---
+if st.sidebar.button("▶️ INICIAR PRODUCCIÓN"):
+    historial = []
+    dinero, scrap, fallos = 0, 0, 0
+    progreso_bar = st.progress(0)
+    
     for i in range(1, lote + 1):
-        nombre = f"P{i}"
+        sku = f"SKU-{200 + i}"
         
-        # MOVIMIENTO CORTE -> ENSAMBLE
-        pasos = np.linspace(1, 9, 8)
-        for p in pasos:
-            step_id += 1
-            # Agregamos 'key' para que Streamlit no se confunda
-            viz.plotly_chart(
-                generar_pixel_factory(p, pos_supervisor, "PROCESO", nombre), 
-                use_container_width=True, 
-                key=f"anim_{step_id}"
-            )
-            time.sleep(0.05)
-
-        # LÓGICA DE AZAR
-        suerte = np.random.random()
-        step_id += 1 # Aumentamos el ID para el resultado final
+        # FASE 1: CORTE
+        with v_planta:
+            st.markdown(f"🗜️ **CORTE**<br>PROCESANDO: {sku}", unsafe_allow_html=True)
+            time.sleep(t_proceso)
         
-        if suerte < 0.15:
-            res = "RECHAZADA"
-            perdido += 50
+        # FASE 2: ENSAMBLE
+        with v_planta:
+            st.markdown(f"🤖 **ENSAMBLE**<br>RECIBIENDO: {sku}", unsafe_allow_html=True)
+            time.sleep(t_proceso)
+            
+        # CONTROL DE CALIDAD (Cálculos)
+        error = np.random.random() < (prob_error / 100)
+        costo_fijo = 25
+        if error:
+            res = "RECHAZADO"
+            scrap += costo_fijo
             fallos += 1
-            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "RECHAZADA", nombre), use_container_width=True, key=f"res_{step_id}")
+            with v_planta: st.error(f"❌ {sku}: DEFECTO")
         else:
-            res = "OK"
-            ganado += 100
-            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "OK", nombre), use_container_width=True, key=f"res_{step_id}")
+            res = "APROBADO"
+            dinero += 75 # Margen neto
+            with v_planta: st.success(f"✅ {sku}: OK")
 
-        # ACTUALIZAR MARCADOR
-        score_n.metric("CASH", f"${ganado - perdido}")
-        score_m.metric("LOSS", f"${perdido}")
-        score_y.metric("YIELD", f"{round(((i-fallos)/i)*100, 1)}%")
+        # Actualizar Datos e Historial
+        historial.append({"SKU": sku, "Estado": res, "Ingreso": 75 if not error else 0, "Costo": costo_fijo if error else 0})
+        
+        # Actualizar Métricas
+        utilidad_val.metric("Utilidad Neta", f"${dinero - scrap}")
+        yield_val.metric("Rendimiento (Yield)", f"{round(((i-fallos)/i)*100, 1)}%")
+        rechazo_val.metric("Pérdida (Scrap)", f"${scrap}")
+        progreso_val.metric("Avance", f"{i}/{lote}")
+        progreso_bar.progress(i / lote)
         
         time.sleep(0.3)
 
+    # --- REPORTE FINAL (FUNCIONALIDAD EXTRA) ---
     st.balloons()
-
+    st.write("---")
+    st.write("### 📈 Análisis de Resultados")
+    df = pd.DataFrame(historial)
+    
+    # Gráfico de barras para ver cuánto dinero perdimos vs ganamos
+    fig = px.bar(df, x="SKU", y=["Ingreso", "Costo"], 
+                 title="Balance Financiero por Pieza",
+                 color_discrete_map={"Ingreso": "#28a745", "Costo": "#dc3545"})
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Botón para descargar el reporte real
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Descargar Reporte de Turno (CSV)", csv, "reporte_planta.csv", "text/csv")
