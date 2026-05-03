@@ -4,132 +4,116 @@ import plotly.graph_objects as go
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Digital Twin V13", layout="wide")
+# --- CONFIGURACIÓN RETRO ---
+st.set_page_config(page_title="Pixel Factory 8-Bit", layout="wide")
 
-st.title("🏭 Planta Interactiva: Control de Supervisor")
+# Estilo CSS para que se vea más como videojuego (fuente y colores)
+st.markdown("""
+    <style>
+    @import url('https://googleapis.com');
+    .pixel-font { font-family: 'Press+Start+2P', cursive; color: #33ff33; }
+    .stApp { background-color: #000000; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- PANEL LATERAL ---
-st.sidebar.header("🕹️ Controles de Planta")
-# CONTROL MANUAL DEL INGENIERO
-pos_supervisor = st.sidebar.slider("📍 Mover Ingeniero (Supervisor)", -5.0, 15.0, 5.0, help="Desplaza al avatar por la planta")
+st.markdown('<h1 class="pixel-font">🏭 PIXEL FACTORY V15</h1>', unsafe_allow_html=True)
 
-with st.sidebar.expander("⚙️ Configuración de Lote"):
-    total_piezas = st.number_input("Cantidad de piezas", 5, 50, 10)
-    t_corte = st.slider("Velocidad Corte (s)", 1.0, 5.0, 2.0)
-    t_ensamble = st.slider("Velocidad Ensamble (s)", 1.0, 5.0, 3.0)
-    prob_error = st.sidebar.slider("Riesgo de Fallo (%)", 0, 20, 5)
+# --- CONTROLES ---
+st.sidebar.markdown('<p class="pixel-font" style="font-size:12px;">CONTROLES</p>', unsafe_allow_html=True)
+pos_supervisor = st.sidebar.slider("🕹️ MOVER SUPERVISOR", 0, 10, 5)
+lote = st.sidebar.number_input("PIEZAS", 5, 20, 10)
 
-# --- FUNCIÓN DE RENDERIZADO CORREGIDA ---
-def generar_escena(pos_pieza, pos_ing, estado_pz, id_pz):
+# --- RENDERIZADO PIXEL ART ---
+def generar_pixel_factory(pos_pieza, pos_ing, estado_pz, id_pz):
     fig = go.Figure()
 
-    # 1. ENTORNO (Piso y Líneas)
-    fig.add_trace(go.Mesh3d(x=[-8, 18, 18, -8, -8, 18, 18, -8], 
-                           y=[-4, -4, 4, 4, -4, -4, 4, 4], 
-                           z=[0, 0, 0, 0, 0.1, 0.1, 0.1, 0.1], 
-                           color='lightgrey', opacity=0.3))
-    
-    fig.add_trace(go.Scatter3d(x=[0, 10], y=[0, 0], z=[0.1, 0.1], 
-                               mode='lines', line=dict(color='black', width=10), name="Banda"))
+    # 1. EL SUELO (Piso de rejilla tipo Pacman)
+    fig.add_shape(type="rect", x0=0, y0=0, x1=10, y1=6, fillcolor="#1a1a1a", line_color="#333")
 
-    # 2. MÁQUINAS (BLOQUES 3D)
-    # Estación Corte (Azul)
-    fig.add_trace(go.Mesh3d(
-        x=[-1, 1, 1, -1, -1, 1, 1, -1], 
-        y=[-1, -1, 1, 1, -1, -1, 1, 1], 
-        z=[0, 0, 0, 0, 2, 2, 2, 2], 
-        color='blue', name="CNC"
-    ))
-    # Estación Ensamble (Naranja)
-    fig.add_trace(go.Mesh3d(
-        x=[9, 11, 11, 9, 9, 11, 11, 9], 
-        y=[-1, -1, 1, 1, -1, -1, 1, 1], 
-        z=[0, 0, 0, 0, 2, 2, 2, 2], 
-        color='orange', name="Robot"
-    ))
+    # 2. LAS MÁQUINAS (Sprites con Emojis)
+    # Estación Corte
+    fig.add_annotation(x=1, y=3, text="💾", font_size=50, showarrow=False)
+    fig.add_annotation(x=1, y=1, text="CORTE", font_size=12, font_color="cyan", showarrow=False)
 
-    # 3. LA PIEZA
-    col_pz = "cyan" if estado_pz == "PROCESO" else ("green" if estado_pz == "OK" else "red")
-    fig.add_trace(go.Scatter3d(
-        x=[pos_pieza], y=[0], z=[0.6], mode='markers+text',
-        text=[id_pz], textposition="top center",
-        marker=dict(size=14, color=col_pz, symbol='diamond', line=dict(width=2, color='white'))
+    # Estación Ensamble
+    fig.add_annotation(x=9, y=3, text="🤖", font_size=50, showarrow=False)
+    fig.add_annotation(x=9, y=1, text="ENSAMBLE", font_size=12, font_color="orange", showarrow=False)
+
+    # 3. LA BANDA (Camino de puntos)
+    for dot in range(2, 9):
+        fig.add_annotation(x=dot, y=3, text=".", font_size=20, font_color="white", showarrow=False)
+
+    # 4. LA PIEZA (Sprite dinámico)
+    # Cambia de emoji según el estado
+    sprite_pz = "📦" if estado_pz == "PROCESO" else ("⭐" if estado_pz == "OK" else "💀")
+    fig.add_trace(go.Scatter(
+        x=[pos_pieza], y=[3],
+        mode='text',
+        text=[sprite_pz],
+        textfont=dict(size=40),
+        name="Pieza"
     ))
 
-    # 4. EL INGENIERO (CONTROLADO POR EL USUARIO)
-    fig.add_trace(go.Scatter3d(
-        x=[pos_ing], y=[2.5], z=[1.5], 
-        mode='markers+text', text=["👷 SUPERVISOR"],
-        marker=dict(size=18, color='yellow', symbol='diamond', line=dict(width=3, color='black'))
+    # 5. EL INGENIERO (Mario / Supervisor)
+    fig.add_trace(go.Scatter(
+        x=[pos_ing], y=[5],
+        mode='text',
+        text=["👷"],
+        textfont=dict(size=45),
+        name="Supervisor"
     ))
 
+    # Ajustes de pantalla de juego
+    fig.update_xaxes(range=[0, 10], showgrid=False, zeroline=False, visible=False)
+    fig.update_yaxes(range=[0, 6], showgrid=False, zeroline=False, visible=False)
     fig.update_layout(
-        scene=dict(
-            xaxis=dict(range=[-8, 18], title="Eje X"), 
-            yaxis=dict(range=[-5, 5], title="Eje Y"), 
-            zaxis=dict(range=[0, 5], title="Eje Z"),
-            aspectmode='manual', 
-            aspectratio=dict(x=2.5, y=1, z=0.4)
-        ),
-        margin=dict(l=0, r=0, b=0, t=0), height=600
+        height=400, 
+        paper_bgcolor="black", 
+        plot_bgcolor="black",
+        margin=dict(l=0, r=0, b=0, t=0),
+        showlegend=False
     )
     return fig
 
-# --- SIMULACIÓN ---
-if st.sidebar.button("🚀 INICIAR SIMULACIÓN INTERACTIVA"):
-    andon = st.empty()
+# --- LOOP DE JUEGO ---
+if st.sidebar.button("▶️ START GAME"):
     viz = st.empty()
-    
-    st.write("---")
-    c1, c2, c3 = st.columns(3)
-    k_neto = c1.empty()
-    k_fail = c2.empty()
-    k_yield = c3.empty()
+    col1, col2, col3 = st.columns(3)
+    score_n = col1.empty()
+    score_m = col2.empty()
+    score_y = col3.empty()
 
-    historial = []
-    ganancia, perdida, fallos = 0, 0, 0
+    ganado, perdido, fallos = 0, 0, 0
 
-    for i in range(1, total_piezas + 1):
-        nombre = f"PZ-{i}"
+    for i in range(1, lote + 1):
+        nombre = f"P{i}"
         
-        # ETAPA: CORTE
-        andon.info(f"📍 {nombre} en Estación de Corte")
-        viz.plotly_chart(generar_escena(0, pos_supervisor, "PROCESO", nombre), use_container_width=True)
-        time.sleep(t_corte/2)
-
-        # ETAPA: TRASLADO
-        for s in np.linspace(0, 10, 5):
-            viz.plotly_chart(generar_escena(s, pos_supervisor, "PROCESO", nombre), use_container_width=True)
+        # MOVIMIENTO CORTE -> ENSAMBLE
+        pasos = np.linspace(1, 9, 8)
+        for p in pasos:
+            viz.plotly_chart(generar_pixel_factory(p, pos_supervisor, "PROCESO", nombre), use_container_width=True)
             time.sleep(0.1)
 
-        # ETAPA: ENSAMBLE
-        andon.warning(f"🔧 {nombre} en Estación de Ensamble")
-        viz.plotly_chart(generar_escena(10, pos_supervisor, "PROCESO", nombre), use_container_width=True)
-        time.sleep(t_ensamble/2)
-
-        # RESULTADO (Lógica de Calidad)
-        es_error = np.random.random() < (prob_error/100)
-        t_ciclo = (t_corte + t_ensamble) + np.random.normal(0, 0.2)
-        costo_op = (t_ciclo/60) * 15 
-
-        if es_error:
+        # LÓGICA DE AZAR (Tipo RPG)
+        suerte = np.random.random()
+        if suerte < 0.15:
             res = "RECHAZADA"
-            perdida += (20 + costo_op)
+            perdido += 50
             fallos += 1
+            # Animación de muerte
+            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "RECHAZADA", nombre), use_container_width=True)
         else:
             res = "OK"
-            ganancia += (100 - (20 + costo_op))
+            ganado += 100
+            # Animación de éxito
+            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "OK", nombre), use_container_width=True)
 
-        historial.append({"ID": nombre, "Estado": res, "Tiempo": round(t_ciclo, 2)})
+        # ACTUALIZAR MARCADOR (SCORE)
+        score_n.metric("CASH", f"${ganado - perdido}")
+        score_m.metric("LOSS", f"${perdido}")
+        score_y.metric("YIELD", f"{round(((i-fallos)/i)*100, 1)}%")
         
-        # Mostrar resultado final en la posición correspondiente
-        pos_final = 10 if res == "OK" else 0
-        viz.plotly_chart(generar_escena(pos_final, pos_supervisor, res, nombre), use_container_width=True)
-        
-        # Actualizar Métricas
-        k_neto.metric("Balance ($)", f"${round(ganancia - perdida, 2)}")
-        k_fail.metric("Scrap", f"${round(perdida, 2)}", delta_color="inverse")
-        k_yield.metric("Yield (%)", f"{round(((i-fallos)/i)*100, 1)}%")
-        
+        time.sleep(0.5)
+
     st.balloons()
+    st.markdown('<p class="pixel-font" style="text-align:center;">GAME OVER - TOTAL SCORE: ' + str(ganado-perdido) + '</p>', unsafe_allow_html=True)
