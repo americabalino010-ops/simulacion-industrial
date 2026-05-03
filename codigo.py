@@ -57,92 +57,86 @@ elif st.session_state.faceta == 'parametros':
     if st.button("⬅️ Volver"):
         cambiar_faceta('presentacion')
 
-# --- FACETA 3: SIMULACIÓN Y RESULTADOS ---
+# --- FACETA 3  ---
 elif st.session_state.faceta == 'simulacion':
     d = st.session_state.datos_sim
-    st.title("📊 Monitor de Producción en Vivo")
+    st.markdown(f"<h1 style='text-align: center; color: #00d4ff;'>🌐 Smart Factory Monitor</h1>", unsafe_allow_html=True)
     
+    # Dashboard de KPIs estilo "Control Room"
     c1, c2, c3 = st.columns(3)
     met_util = c1.empty()
     met_oee = c2.empty()
     met_prog = c3.empty()
 
+    # --- LAYOUT VISUAL DE PLANTA (Basado en tu imagen) ---
     st.write("---")
-    col_a, col_b, col_c = st.columns(3) 
-    v_corte = col_a.empty()
-    v_trans = col_b.empty()
-    v_ensam = col_c.empty()
+    # Usamos contenedores con bordes para simular las estaciones de tu imagen
+    est_a, flow_1, est_b, flow_2, est_c = st.columns([2,1,2,1,2])
     
+    with est_a:
+        st.markdown("### 🖥️\n**CONTROL**")
+        v_corte = st.empty()
+    
+    with est_b:
+        st.markdown("### 🦾\n**ROBOT**")
+        v_ensam = st.empty()
+        
+    with est_c:
+        st.markdown("### 📦\n**SALIDA**")
+        v_calidad = st.empty()
+
+    v_flow = flow_1.empty() # Espacio para el movimiento
     log_eventos = st.empty()
 
-    historial = []
+    # --- LÓGICA DE MOVIMIENTO ---
     buenas, fallas, dinero = 0, 0, 0
-    
+    historial = []
+
     for i in range(1, int(d['n_lote']) + 1):
-        sku = f"PZ-{100+i}"
+        sku = f"UNIT-{100+i}"
         costo_pz = d['c_mat']
         
-        v_corte.info(f"🗜️ **CORTE**\n\nProcesando: {sku}")
-        v_trans.write("---")
-        v_ensam.write("---")
+        # 1. ESTACIÓN A: CORTE (Icono de proceso)
+        v_corte.markdown(f"⚙️ **PROCESANDO**\n{sku}")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        v_corte.success("🗜️ **CORTE**\n\nEsperando...")
-        v_trans.warning(f"🚚 **MOVIMIENTO**\n\n{sku}")
-        time.sleep(1)
-        
-        v_trans.write("---")
-        v_ensam.info(f"🤖 **ENSAMBLE**\n\nProcesando: {sku}")
+        # 2. MOVIMIENTO (Aquí simulamos el flujo de tu imagen)
+        v_corte.markdown("✅ **LISTO**")
+        for dot in [".", "..", "...", "📦"]:
+            v_flow.markdown(f"<h2 style='text-align:center;'>{dot}</h2>", unsafe_allow_html=True)
+            time.sleep(0.3)
+        v_flow.empty()
+
+        # 3. ESTACIÓN B: ENSAMBLE
+        v_ensam.markdown(f"🔧 **ENSAMBLANDO**\n{sku}")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
-        
-        v_ensam.success("🤖 **ENSAMBLE**\n\nListo")
+        v_ensam.markdown("✅ **LISTO**")
+
+        # 4. CALIDAD Y RESULTADO
         error = (np.random.random() * 100) < d['fallo_p']
-        
         if error:
             res = "RECHAZADA"
             fallas += 1
             ganancia_pz = 0
-            log_eventos.error(f"❌ {sku} RECHAZADA. Pérdida: ${round(costo_pz, 2)}")
+            v_calidad.error("💀 **FALLO**")
+            log_eventos.error(f"⚠️ {sku}: Detectado defecto en sensor óptico.")
         else:
             res = "OK"
             buenas += 1
             ganancia_pz = d['p_vta'] - costo_pz
-            dinero += ganancia_pz # <--- CORRECCIÓN AQUÍ
-            log_eventos.success(f"✅ {sku} OK. Utilidad: ${round(ganancia_pz, 2)}")
+            dinero += ganancia_pz
+            v_calidad.success("🌟 **PASS**")
+            log_eventos.success(f"💎 {sku}: Calidad verificada. Listo para despacho.")
+
+        # ACTUALIZAR MÉTRICAS
+        met_util.metric("Utilidad Total", f"${round(dinero, 2)}")
+        met_oee.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
+        met_prog.metric("Lote", f"{i}/{int(d['n_lote'])}")
         
-        historial.append({
-            "SKU": sku, 
-            "Estado": res, 
-            "Costo Acumulado ($)": round(costo_pz, 2), 
-            "Utilidad Real ($)": round(ganancia_pz, 2)
-        })
-        
-        met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
-        met_oee.metric("Calidad (OEE)", f"{round((buenas/i)*100, 1)}%")
-        met_prog.metric("Progreso", f"{i}/{int(d['n_lote'])}")
-        
-        time.sleep(0.5)
+        time.sleep(0.8)
 
     st.balloons()
-    st.success("✅ Turno de producción finalizado.")
+    # (Aquí iría el botón de descarga que ya tienes)
 
-    df_final = pd.DataFrame(historial)
-    csv = df_final.to_csv(index=False).encode('utf-8')
-    
-    st.write("### 📂 Acciones de Fin de Turno")
-    c_down, c_reset = st.columns(2)
-    
-    with c_down:
-        st.download_button(
-            label="📥 Descargar Reporte CSV",
-            data=csv,
-            file_name=f"reporte_produccion_{time.strftime('%Y%m%d-%H%M')}.csv",
-            mime="text/csv",
-        )
-    
-    with c_reset:
-        if st.button("🔄 Reiniciar Sistema"):
-            cambiar_faceta('presentacion')
-            st.rerun()
