@@ -3,91 +3,120 @@ import pandas as pd
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Control v19", layout="wide")
-st.title("🏭 Monitor Industrial: Flujo de Procesos y OEE")
+# --- INICIALIZACIÓN DE ESTADOS ---
+if 'faceta' not in st.session_state:
+    st.session_state.faceta = 'presentacion'
 
-# --- PARÁMETROS FINANCIEROS Y TÉCNICOS (SIDEBAR) ---
-st.sidebar.header("💰 Configuración Económica")
-costo_material = st.sidebar.number_input("Costo Material ($/pz)", 5.0, 100.0, 20.0)
-costo_segundo = st.sidebar.number_input("Costo Operativo ($/seg)", 0.1, 10.0, 1.5)
-precio_venta = st.sidebar.number_input("Precio de Venta ($/pz)", 10.0, 500.0, 100.0)
+# --- FUNCIÓN PARA CAMBIAR DE FACETA ---
+def cambiar_faceta(nombre_faceta):
+    st.session_state.faceta = nombre_faceta
 
-st.sidebar.header("⚙️ Parámetros de Línea")
-lote = st.sidebar.number_input("Lote de Producción", 5, 50, 10)
-t_maquina = st.sidebar.slider("Tiempo de Ciclo (seg)", 1, 5, 2)
-tasa_fallo = st.sidebar.slider("Probabilidad de Error (%)", 0, 30, 5)
+# --- FACETA 1: PRESENTACIÓN ---
+if st.session_state.faceta == 'presentacion':
+    st.title("🏭 Digital Twin: Simulador de Eficiencia Industrial")
+    st.subheader("Bienvenido al Centro de Análisis de Producción")
+    
+    st.markdown("""
+    Esta herramienta permite modelar una línea de producción real, analizando:
+    * **Flujo de procesos** (Corte y Ensamble).
+    * **Costeo Dinámico** (Material + Energía).
+    * **Indicadores Globales** (OEE y Utilidad Neta).
+    
+    *Diseñado para la optimización de procesos y toma de decisiones financieras.*
+    """)
+    
+    if st.button("🚀 Comenzar Configuración"):
+        cambiar_faceta('parametros')
 
-# --- DISEÑO DEL DASHBOARD ---
-col_layout, col_calculos = st.columns([2, 1])
+# --- FACETA 2: CONFIGURACIÓN DE PARÁMETROS ---
+elif st.session_state.faceta == 'parametros':
+    st.title("⚙️ Configuración del Modelo")
+    st.write("Define los valores de entrada para tu simulación industrial.")
 
-with col_layout:
-    st.subheader("📍 Planta en Tiempo Real")
-    estaciones = st.columns(3)
-    c_corte = estaciones[0].empty()
-    c_trans = estaciones[1].empty()
-    c_ensam = estaciones[2].empty()
-    status_text = st.empty()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Variables de Costo")
+        c_mat = st.number_input("Costo Materia Prima ($/pz)", 5.0, 100.0, 20.0)
+        c_seg = st.number_input("Costo Energía/MO ($/seg)", 0.1, 10.0, 1.5)
+        p_vta = st.number_input("Precio de Venta Final ($/pz)", 10.0, 500.0, 100.0)
 
-with col_calculos:
-    st.subheader("🧾 Desglose de Costos (Pieza Actual)")
-    area_calculo = st.empty()
+    with col2:
+        st.subheader("Variables de Operación")
+        n_lote = st.number_input("Tamaño del Lote (unidades)", 5, 50, 10)
+        t_ciclo = st.slider("Tiempo de Máquina (seg)", 1, 5, 2)
+        fallo_p = st.slider("Tasa de Error Esperada (%)", 0, 30, 5)
+
+    if st.button("▶️ Iniciar Simulación"):
+        # Guardamos los valores para usarlos en la siguiente faceta
+        st.session_state.datos_sim = {
+            "c_mat": c_mat, "c_seg": c_seg, "p_vta": p_vta,
+            "n_lote": n_lote, "t_ciclo": t_ciclo, "fallo_p": fallo_p
+        }
+        cambiar_faceta('simulacion')
+    
+    if st.button("⬅️ Volver"):
+        cambiar_faceta('presentacion')
+
+# --- FACETA 3: SIMULACIÓN Y RESULTADOS ---
+elif st.session_state.faceta == 'simulacion':
+    d = st.session_state.datos_sim
+    st.title("📊 Monitor de Producción en Vivo")
+    
+    # Dashboard de KPIs
+    c1, c2, c3 = st.columns(3)
+    met_util = c1.empty()
+    met_oee = c2.empty()
+    met_prog = c3.empty()
+
+    # Layout de la planta
     st.write("---")
-    met_utilidad = st.empty()
-    met_oee = st.empty()
+    estaciones = st.columns(3)
+    v_corte = estaciones.empty()
+    v_trans = estaciones.empty()
+    v_ensam = estaciones.empty()
+    
+    log_eventos = st.empty()
 
-# --- LÓGICA DE SIMULACIÓN ---
-if st.sidebar.button("▶️ INICIAR PRODUCCIÓN"):
-    utilidad_neta, total_costo_scrap, buenas, fallas = 0, 0, 0, 0
-    historial = []
-
-    for i in range(1, lote + 1):
-        sku = f"PZ-{100 + i}"
-        costo_acumulado = costo_material
+    # Lógica de simulación
+    buenas, fallas, dinero, scrap = 0, 0, 0, 0
+    
+    for i in range(1, int(d['n_lote']) + 1):
+        sku = f"PZ-{100+i}"
+        costo_pz = d['c_mat']
         
-        # 1. CORTE
-        c_corte.info("🗜️ CORTE\nPROCESANDO")
-        c_trans.write("---")
-        c_ensam.write("---")
+        # Simulación de Flujo
+        v_corte.info(f"🗜️ CORTE\n{sku}")
+        time.sleep(d['t_ciclo'])
+        costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        for t in range(t_maquina):
-            costo_acumulado += costo_segundo
-            status_text.write(f"⚙️ {sku}: Fase de Corte...")
-            area_calculo.markdown(f"**Material:** ${costo_material}  \n**Energía/MO:** ${round(costo_acumulado-costo_material,2)}  \n**SUBTOTAL:** ${round(costo_acumulado,2)}")
-            time.sleep(1)
-
-        # 2. TRÁNSITO
-        c_corte.write("🗜️ LIBRE")
-        c_trans.warning(f"🚚 {sku}\nEN MOVIMIENTO")
+        v_corte.write("🗜️ LIBRE")
+        v_trans.warning(f"🚚 MOVIMIENTO\n{sku}")
         time.sleep(1)
-
-        # 3. ENSAMBLE
-        c_trans.write("---")
-        c_ensam.info("🤖 ENSAMBLE\nPROCESANDO")
-        for t in range(t_maquina):
-            costo_acumulado += costo_segundo
-            status_text.write(f"🔧 {sku}: Fase de Ensamble...")
-            area_calculo.markdown(f"**Material:** ${costo_material}  \n**Energía/MO:** ${round(costo_acumulado-costo_material,2)}  \n**SUBTOTAL:** ${round(costo_acumulado,2)}")
-            time.sleep(1)
-
-        # 4. RESULTADO Y CALIDAD
-        error = (np.random.random() * 100) < tasa_fallo
+        
+        v_trans.write("---")
+        v_ensam.info(f"🤖 ENSAMBLE\n{sku}")
+        time.sleep(d['t_ciclo'])
+        costo_pz += (d['t_ciclo'] * d['c_seg'])
+        
+        # Calidad
+        error = (np.random.random() * 100) < d['fallo_p']
         if error:
             fallas += 1
-            total_costo_scrap += costo_acumulado
-            status_text.error(f"❌ {sku} RECHAZADA. Pérdida: ${round(costo_acumulado, 2)}")
+            scrap += costo_pz
+            log_eventos.error(f"❌ {sku} RECHAZADA. Pérdida: ${round(costo_pz, 2)}")
         else:
             buenas += 1
-            ganancia_pz = precio_venta - costo_acumulado
-            utilidad_neta += ganancia_pz
-            status_text.success(f"✅ {sku} APROBADA. Utilidad: ${round(ganancia_pz, 2)}")
-
-        # --- ACTUALIZAR MÉTRICAS ---
-        oee_actual = (buenas / i) * 100
-        met_utilidad.metric("Utilidad Acumulada", f"${round(utilidad_neta, 2)}", f"-${round(total_costo_scrap,2)} Scrap")
-        met_oee.metric("OEE (Calidad)", f"{round(oee_actual, 1)}%", help="Disponibilidad x Rendimiento x Calidad")
+            dinero += (d['p_vta'] - costo_pz)
+            log_eventos.success(f"✅ {sku} OK. Utilidad: ${round(d['p_vta'] - costo_pz, 2)}")
         
-        time.sleep(1)
+        # Actualizar KPIs
+        met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
+        met_oee.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
+        met_prog.metric("Progreso", f"{i}/{int(d['n_lote'])}")
+        
+        time.sleep(0.5)
 
     st.balloons()
-    st.success(f"🏁 Turno completado. OEE Final: {round((buenas/lote)*100, 1)}%")
+    if st.button("🔄 Reiniciar Sistema"):
+        cambiar_faceta('presentacion')
