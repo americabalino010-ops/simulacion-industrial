@@ -48,7 +48,6 @@ elif st.session_state.faceta == 'parametros':
         fallo_p = st.slider("Tasa de Error Esperada (%)", 0, 30, 5)
 
     if st.button("▶️ Iniciar Simulación"):
-        # Guardamos los valores para usarlos en la siguiente faceta
         st.session_state.datos_sim = {
             "c_mat": c_mat, "c_seg": c_seg, "p_vta": p_vta,
             "n_lote": n_lote, "t_ciclo": t_ciclo, "fallo_p": fallo_p
@@ -58,18 +57,16 @@ elif st.session_state.faceta == 'parametros':
     if st.button("⬅️ Volver"):
         cambiar_faceta('presentacion')
 
-# --- FACETA 3: SIMULACIÓN Y RESULTADOS (VERSIÓN FINAL CON DESCARGA) ---
+# --- FACETA 3: SIMULACIÓN Y RESULTADOS ---
 elif st.session_state.faceta == 'simulacion':
     d = st.session_state.datos_sim
     st.title("📊 Monitor de Producción en Vivo")
     
-    # Dashboard de KPIs
     c1, c2, c3 = st.columns(3)
     met_util = c1.empty()
     met_oee = c2.empty()
     met_prog = c3.empty()
 
-    # Layout de la planta
     st.write("---")
     col_a, col_b, col_c = st.columns(3) 
     v_corte = col_a.empty()
@@ -78,7 +75,6 @@ elif st.session_state.faceta == 'simulacion':
     
     log_eventos = st.empty()
 
-    # Variables para el reporte y lógica
     historial = []
     buenas, fallas, dinero = 0, 0, 0
     
@@ -86,25 +82,21 @@ elif st.session_state.faceta == 'simulacion':
         sku = f"PZ-{100+i}"
         costo_pz = d['c_mat']
         
-        # 1. Fase de Corte
         v_corte.info(f"🗜️ **CORTE**\n\nProcesando: {sku}")
         v_trans.write("---")
         v_ensam.write("---")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        # 2. Fase de Tránsito
         v_corte.success("🗜️ **CORTE**\n\nEsperando...")
         v_trans.warning(f"🚚 **MOVIMIENTO**\n\n{sku}")
         time.sleep(1)
         
-        # 3. Fase de Ensamble
         v_trans.write("---")
         v_ensam.info(f"🤖 **ENSAMBLE**\n\nProcesando: {sku}")
         time.sleep(d['t_ciclo'])
         costo_pz += (d['t_ciclo'] * d['c_seg'])
         
-        # Calidad y Resultados
         v_ensam.success("🤖 **ENSAMBLE**\n\nListo")
         error = (np.random.random() * 100) < d['fallo_p']
         
@@ -117,10 +109,9 @@ elif st.session_state.faceta == 'simulacion':
             res = "OK"
             buenas += 1
             ganancia_pz = d['p_vta'] - costo_pz
-            dinero += ganancia_real = ganancia_pz
+            dinero += ganancia_pz # <--- CORRECCIÓN AQUÍ
             log_eventos.success(f"✅ {sku} OK. Utilidad: ${round(ganancia_pz, 2)}")
         
-        # Guardar en historial para el CSV
         historial.append({
             "SKU": sku, 
             "Estado": res, 
@@ -128,7 +119,6 @@ elif st.session_state.faceta == 'simulacion':
             "Utilidad Real ($)": round(ganancia_pz, 2)
         })
         
-        # Actualizar KPIs
         met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
         met_oee.metric("Calidad (OEE)", f"{round((buenas/i)*100, 1)}%")
         met_prog.metric("Progreso", f"{i}/{int(d['n_lote'])}")
@@ -138,7 +128,6 @@ elif st.session_state.faceta == 'simulacion':
     st.balloons()
     st.success("✅ Turno de producción finalizado.")
 
-    # --- SECCIÓN DE DESCARGA Y REINICIO ---
     df_final = pd.DataFrame(historial)
     csv = df_final.to_csv(index=False).encode('utf-8')
     
@@ -147,7 +136,7 @@ elif st.session_state.faceta == 'simulacion':
     
     with c_down:
         st.download_button(
-            label="📥 Descargar Reporte Excel (CSV)",
+            label="📥 Descargar Reporte CSV",
             data=csv,
             file_name=f"reporte_produccion_{time.strftime('%Y%m%d-%H%M')}.csv",
             mime="text/csv",
@@ -155,5 +144,5 @@ elif st.session_state.faceta == 'simulacion':
     
     with c_reset:
         if st.button("🔄 Reiniciar Sistema"):
-            st.session_state.faceta = 'presentacion'
+            cambiar_faceta('presentacion')
             st.rerun()
