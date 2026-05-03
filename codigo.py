@@ -5,130 +5,135 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Digital Twin V10", layout="wide")
-st.title("🏭 Simulador de Planta: Animación de Flujo Real")
+st.set_page_config(page_title="Industrial Digital Twin V11", layout="wide")
+st.title("🏭 Planta 4.0: Simulación de Flujo y Costos")
 
-# --- PANEL LATERAL ---
-st.sidebar.header("🛠️ Configuración de la Línea")
+# --- PANEL LATERAL: PARÁMETROS ---
+st.sidebar.header("🕹️ Panel de Control")
 total_piezas = st.sidebar.number_input("Lote de Producción", 5, 50, 10)
 
-col_c1, col_c2 = st.sidebar.columns(2)
-with col_c1:
-    t_corte = st.slider("Tiempo Corte (s)", 1.0, 10.0, 3.0)
-with col_c2:
-    f_corte = st.slider("Error Corte (%)", 0, 15, 2)
+with st.sidebar.expander("⚙️ Estaciones de Trabajo"):
+    t_corte = st.slider("Ciclo Corte (s)", 1.0, 10.0, 3.0)
+    f_corte = st.slider("Fallo Corte (%)", 0, 15, 2)
+    st.write("---")
+    t_ens = st.slider("Ciclo Ensamble (s)", 1.0, 10.0, 4.0)
+    f_ens = st.slider("Fallo Ensamble (%)", 0, 15, 5)
 
-col_e1, col_e2 = st.sidebar.columns(2)
-with col_e1:
-    t_ens = st.slider("Tiempo Ensamble (s)", 1.0, 10.0, 4.0)
-with col_e2:
-    f_ens = st.slider("Error Ensamble (%)", 0, 15, 5)
+with st.sidebar.expander("💸 Parámetros de Costo"):
+    costo_mat = st.sidebar.number_input("Materia Prima ($/pz)", 1.0, 100.0, 15.0)
+    costo_min = st.sidebar.number_input("Costo Máquina ($/min)", 1.0, 50.0, 10.0)
+    precio_v = st.sidebar.number_input("Precio de Venta ($/pz)", 10.0, 500.0, 60.0)
 
-st.sidebar.header("💰 Parámetros Financieros")
-costo_material = st.sidebar.number_input("Costo Material ($/pz)", 1.0, 100.0, 15.0)
-costo_min_maq = st.sidebar.number_input("Costo Máquina ($/min)", 1.0, 50.0, 10.0)
-precio_venta = st.sidebar.number_input("Precio Venta ($/pz)", 10.0, 500.0, 60.0)
-
-# --- FUNCIÓN PARA EL GRÁFICO DE PLANTA ---
-def generar_planta(pos_x, estado_pieza, nombre_pieza):
+# --- FUNCIÓN DE RENDERIZADO 3D (EL LAYOUT) ---
+def generar_planta_3d(pos_x, estado_pz, nombre_pz):
     fig = go.Figure()
-    # Dibujar Estaciones (Bases fijas)
-    fig.add_trace(go.Scatter3d(
-        x=[0, 10], y=[0, 0], z=[0, 0],
-        mode='markers+text',
-        text=["ESTACIÓN: CORTE", "ESTACIÓN: ENSAMBLE"],
-        textposition="top center",
-        marker=dict(size=30, symbol='square', color='lightgray', opacity=0.8),
-        name="Maquinaria"
+
+    # 1. EL SUELO (Piso industrial)
+    fig.add_trace(go.Mesh3d(
+        x=[-5, 15, 15, -5], y=[-3, -3, 3, 3], z=[0, 0, 0, 0],
+        color='lightslategray', opacity=0.4, showscale=False, name="Suelo"
     ))
-    # Dibujar la Pieza Actual en su posición
-    color_map = {"PROCESO": "blue", "OK": "green", "RECHAZADA": "red"}
-    fig.add_trace(go.Scatter3d(
-        x=[pos_x], y=[0], z=[0.5],
-        mode='markers+text',
-        text=[nombre_pieza],
-        textposition="top center",
-        marker=dict(size=15, color=color_map.get(estado_pieza, "blue"), symbol='diamond'),
-        name="Material"
+
+    # 2. MÁQUINAS (Bloques 3D)
+    # Estación Corte (Azul)
+    fig.add_trace(go.Mesh3d(
+        x=[-1, 1, 1, -1, -1, 1, 1, -1], y=[-1, -1, 1, 1, -1, -1, 1, 1], z=[0, 0, 0, 0, 2, 2, 2, 2],
+        i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2], j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3], k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+        color='royalblue', opacity=0.9, name="CNC Corte"
     ))
-    # Configuración de cámara y límites (para que no se mueva)
+    # Estación Ensamble (Naranja)
+    fig.add_trace(go.Mesh3d(
+        x=[9, 11, 11, 9, 9, 11, 11, 9], y=[-1, -1, 1, 1, -1, -1, 1, 1], z=[0, 0, 0, 0, 2, 2, 2, 2],
+        i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2], j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3], k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],
+        color='orange', opacity=0.9, name="Ensamble"
+    ))
+
+    # 3. BANDA TRANSPORTADORA (Línea de flujo)
+    fig.add_trace(go.Scatter3d(
+        x=[0, 10], y=[0, 0], z=[0.1, 0.1],
+        mode='lines', line=dict(color='black', width=12), name="Transportador"
+    ))
+
+    # 4. LA PIEZA (Esfera)
+    col_map = {"PROCESO": "cyan", "OK": "lime", "RECHAZADA": "crimson"}
+    fig.add_trace(go.Scatter3d(
+        x=[pos_x], y=[0], z=[1],
+        mode='markers+text', text=[nombre_pz], textposition="top center",
+        marker=dict(size=12, color=col_map.get(estado_pz, "cyan"), symbol='diamond', line=dict(width=2, color='white'))
+    ))
+
     fig.update_layout(
         scene=dict(
-            xaxis=dict(range=[-2, 12], title="Línea de Producción"),
-            yaxis=dict(range=[-2, 2], visible=False),
-            zaxis=dict(range=[0, 2], visible=False),
-            aspectmode='manual',
-            aspectratio=dict(x=2, y=0.5, z=0.3)
+            xaxis=dict(range=[-5, 15], title="Línea de Producción"),
+            yaxis=dict(range=[-5, 5], visible=False),
+            zaxis=dict(range=[0, 4], visible=False),
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))
         ),
-        margin=dict(l=0, r=0, b=0, t=0), height=500
+        margin=dict(l=0, r=0, b=0, t=0), height=550
     )
     return fig
 
-# --- EJECUCIÓN ---
-if st.sidebar.button("🚀 Iniciar Turno"):
-    col_viz, col_kpi = st.columns([2, 1])
-    with col_viz:
-        viz_placeholder = st.empty()
-        status_msg = st.empty()
-    with col_kpi:
-        st.subheader("KPIs Financieros")
-        k1, k2 = st.columns(2)
-        utilidad_metrica = k1.empty()
-        perdida_metrica = k2.empty()
-        yield_metrica = st.empty()
-        tabla_resumen = st.empty()
+# --- LÓGICA DE SIMULACIÓN ---
+if st.sidebar.button("▶️ Iniciar Producción"):
+    col_main, col_side = st.columns([2, 1])
+    
+    with col_main:
+        viz_p = st.empty()
+        log_p = st.empty()
+        
+    with col_side:
+        st.subheader("📈 Monitor de Calidad")
+        m_yield = st.empty()
+        m_cash = st.empty()
+        st.markdown("---")
+        st.subheader("📑 Reporte de Lote")
+        tabla_p = st.empty()
 
     historial = []
-    t_ganado, t_perdido, defectuosas = 0, 0, 0
+    ganancia_t, perdida_t, scrap = 0, 0, 0
 
     for i in range(1, total_piezas + 1):
         nombre = f"P-{i}"
         
-        # --- ETAPA 1: CORTE ---
-        status_msg.info(f"⚙️ {nombre}: Entrando a CORTE...")
-        viz_placeholder.plotly_chart(generar_planta(0, "PROCESO", nombre), use_container_width=True)
-        time.sleep(t_corte/4) # Simulación visual rápida
+        # PASO 1: CORTE
+        viz_p.plotly_chart(generar_planta_3d(0, "PROCESO", nombre), use_container_width=True)
+        log_p.info(f"PROCESANDO: {nombre} en Estación de Corte")
+        time.sleep(t_corte/2)
+        err_c = np.random.random() < (f_corte/100)
         
-        error_c = np.random.random() < (f_corte/100)
-        
-        # --- ETAPA 2: ENSAMBLE ---
-        if not error_c:
-            status_msg.warning(f"🔧 {nombre}: Pasando a ENSAMBLE...")
-            viz_placeholder.plotly_chart(generar_planta(10, "PROCESO", nombre), use_container_width=True)
-            time.sleep(t_ens/4)
-            error_e = np.random.random() < (f_ens/100)
+        # PASO 2: ENSAMBLE (Si corte salió bien)
+        if not err_c:
+            viz_p.plotly_chart(generar_planta_3d(10, "PROCESO", nombre), use_container_width=True)
+            log_p.warning(f"TRASLADO: {nombre} moviéndose a Ensamble")
+            time.sleep(t_ens/2)
+            err_e = np.random.random() < (f_ens/100)
         else:
-            error_e = False # No llegó a ensamble
+            err_e = False
 
-        # --- RESULTADO FINAL DE LA PIEZA ---
+        # CÁLCULOS FINALES
         t_total = t_corte + t_ens + np.random.normal(0, 0.2)
-        costo_op = (t_total/60) * costo_min_maq
+        costo_run = (t_total/60) * costo_min
         
-        if error_c or error_e:
-            res, col_p = "RECHAZADA", "red"
-            perdida = costo_material + costo_op
-            t_perdido += perdida
-            defectuosas += 1
+        if err_c or err_e:
+            res = "RECHAZADA"
+            perdida_t += (costo_mat + costo_run)
+            scrap += 1
+            pos_final = 0 if err_c else 10
         else:
-            res, col_p = "OK", "green"
-            ganancia = precio_venta - (costo_material + costo_op)
-            t_ganado += ganancia
+            res = "OK"
+            ganancia_t += (precio_v - (costo_mat + costo_run))
+            pos_final = 10
 
-        historial.append({"ID": nombre, "Estado": res, "Costo Op.": round(costo_op, 2)})
+        viz_p.plotly_chart(generar_planta_3d(pos_final, res, nombre), use_container_width=True)
         
-        # Actualizar Visualización con resultado final
-        pos_final = 0 if error_c else 10
-        viz_placeholder.plotly_chart(generar_planta(pos_final, res, nombre), use_container_width=True)
+        # ACTUALIZAR MÉTRICAS
+        yield_val = ((i-scrap)/i)*100
+        m_yield.metric("YIELD (Calidad)", f"{round(yield_val, 1)}%", f"{'-' if yield_val < 90 else ''}{scrap} fallos")
+        m_cash.metric("UTILIDAD NETO", f"${round(ganancia_t - perdida_t, 2)}")
         
-        # Actualizar KPIs
-        utilidad_metrica.metric("Utilidad Bruta", f"${round(t_ganado, 2)}")
-        perdida_metrica.metric("Pérdida (Scrap)", f"${round(t_perdido, 2)}", delta_color="inverse")
-        yield_metrica.metric("Calidad (Yield)", f"{round(((i-defectuosas)/i)*100, 1)}%")
-        tabla_resumen.dataframe(pd.DataFrame(historial).tail(5), use_container_width=True)
-        
+        historial.append({"ID": nombre, "Estado": res, "Tiempo Seg": round(t_total, 2)})
+        tabla_p.dataframe(pd.DataFrame(historial).tail(5), use_container_width=True)
         time.sleep(0.5)
 
+    st.success("✅ Turno terminado satisfactoriamente.")
     st.balloons()
-    st.success(f"Turno Finalizado. Balance Neto: ${round(t_ganado - t_perdido, 2)}")
-
-
