@@ -84,6 +84,8 @@ if st.sidebar.button("▶️ START GAME"):
     score_y = col3.empty()
 
     ganado, perdido, fallos = 0, 0, 0
+    # Creamos un contador para generar IDs únicos
+    step_id = 0
 
     for i in range(1, lote + 1):
         nombre = f"P{i}"
@@ -91,29 +93,35 @@ if st.sidebar.button("▶️ START GAME"):
         # MOVIMIENTO CORTE -> ENSAMBLE
         pasos = np.linspace(1, 9, 8)
         for p in pasos:
-            viz.plotly_chart(generar_pixel_factory(p, pos_supervisor, "PROCESO", nombre), use_container_width=True)
-            time.sleep(0.1)
+            step_id += 1
+            # Agregamos 'key' para que Streamlit no se confunda
+            viz.plotly_chart(
+                generar_pixel_factory(p, pos_supervisor, "PROCESO", nombre), 
+                use_container_width=True, 
+                key=f"anim_{step_id}"
+            )
+            time.sleep(0.05)
 
-        # LÓGICA DE AZAR (Tipo RPG)
+        # LÓGICA DE AZAR
         suerte = np.random.random()
+        step_id += 1 # Aumentamos el ID para el resultado final
+        
         if suerte < 0.15:
             res = "RECHAZADA"
             perdido += 50
             fallos += 1
-            # Animación de muerte
-            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "RECHAZADA", nombre), use_container_width=True)
+            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "RECHAZADA", nombre), use_container_width=True, key=f"res_{step_id}")
         else:
             res = "OK"
             ganado += 100
-            # Animación de éxito
-            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "OK", nombre), use_container_width=True)
+            viz.plotly_chart(generar_pixel_factory(9, pos_supervisor, "OK", nombre), use_container_width=True, key=f"res_{step_id}")
 
-        # ACTUALIZAR MARCADOR (SCORE)
+        # ACTUALIZAR MARCADOR
         score_n.metric("CASH", f"${ganado - perdido}")
         score_m.metric("LOSS", f"${perdido}")
         score_y.metric("YIELD", f"{round(((i-fallos)/i)*100, 1)}%")
         
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     st.balloons()
-    st.markdown('<p class="pixel-font" style="text-align:center;">GAME OVER - TOTAL SCORE: ' + str(ganado-perdido) + '</p>', unsafe_allow_html=True)
+
