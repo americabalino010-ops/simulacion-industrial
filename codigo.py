@@ -1,143 +1,134 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Tycoon V42", layout="wide")
+# --- CONFIGURACIÓN DE VIDEOJUEGO ---
+st.set_page_config(page_title="Factory RPG V44", layout="wide")
 
-# --- DISEÑO VISUAL DE VIDEOJUEGO (CSS) ---
+# --- ESTILO VISUAL DE VIDEOJUEGO (CSS) ---
 st.markdown("""
     <style>
     @import url('https://googleapis.com');
-
-    .stApp { background-color: #2e2e2e; }
     
-    /* Pantalla de juego */
-    .game-viewport {
-        background-color: #4a4a4a; /* Suelo de metal */
-        border: 6px solid #1a1a1a;
-        padding: 0px;
-        display: block;
-        background-image: linear-gradient(#555 1px, transparent 1px), linear-gradient(90deg, #555 1px, transparent 1px);
-        background-size: 50px 50px; /* Cuadrícula de construcción */
-    }
-
-    /* Baldosas de máquinas */
-    .pixel-tile {
-        height: 140px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        border: 1px solid #333;
-    }
-
-    /* HUD de cálculos (Heads-Up Display) */
-    .hud-panel {
-        background-color: #2c3e50;
-        border: 4px solid #ecf0f1;
-        color: #f1c40f;
-        padding: 15px;
-        font-family: 'VT323', monospace;
-        font-size: 22px;
+    .stApp { background-color: #1a1a1a; font-family: 'VT323', monospace; }
+    
+    /* Cuadro de diálogo estilo Pokémon/RPG */
+    .dialog-box {
+        background-color: #2980b9;
+        border: 4px solid white;
         border-radius: 10px;
-        box-shadow: 5px 5px 0px #000;
+        padding: 20px;
+        color: white;
+        font-size: 24px;
+        box-shadow: 0 0 0 4px #2980b9;
+        margin-top: 20px;
+        min-height: 100px;
+    }
+    
+    /* Pantalla del juego */
+    .viewport {
+        background-color: #34495e;
+        border: 8px solid #2c3e50;
+        border-radius: 15px;
+        height: 350px;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
     }
 
-    .sprite-img { font-size: 50px; filter: drop-shadow(4px 4px 0px #000); }
+    .stat-label { color: #f1c40f; font-size: 28px; text-shadow: 2px 2px #000; }
+    .sprite { font-size: 60px; filter: drop-shadow(4px 4px 0px #000); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADO DEL JUEGO ---
-if 'step' not in st.session_state: st.session_state.step = "setup"
+# --- ENGINE DEL JUEGO (Session State) ---
+if 'step' not in st.session_state: st.session_state.step = "inicio"
+if 'gold' not in st.session_state: st.session_state.gold = 0
 
-# --- FACETA 1: MENÚ PRINCIPAL ---
-if st.session_state.step == "setup":
-    st.markdown("<h1 style='text-align:center; color:#f1c40f; font-family:VT323; font-size:60px;'>INDUSTRIAL TYCOON</h1>", unsafe_allow_html=True)
+# --- FACETA 1: PANTALLA DE TÍTULO ---
+if st.session_state.step == "inicio":
+    st.markdown("<h1 style='text-align:center; color:#f1c40f; font-size:70px;'>FACTORY TYCOON</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:white; font-size:30px;'>PRESIONA START PARA CONFIGURAR LA PLANTA</p>", unsafe_allow_html=True)
     
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.markdown("<div class='hud-panel'>🔧 AJUSTES DE PRODUCCIÓN<br>", unsafe_allow_html=True)
-        lote = st.number_input("Lote de piezas", 5, 20, 5)
-        t_ciclo = st.slider("Velocidad Maquinaria", 1, 4, 2)
-    with col_r:
-        st.markdown("<div class='hud-panel'>💰 AJUSTES FINANCIEROS<br>", unsafe_allow_html=True)
-        costo = st.number_input("Costo Material", 10, 100, 25)
-        precio = st.number_input("Precio Venta", 50, 500, 150)
+    col1, col2, col3 = st.columns(3)
+    with col2:
+        if st.button("▶️ START GAME", use_container_width=True):
+            st.session_state.step = "config"
+            st.rerun()
+
+# --- FACETA 2: CONFIGURACIÓN (MENÚ DE ITEMS) ---
+elif st.session_state.step == "config":
+    st.markdown("<h2 style='color:#3498db;'>🛠️ CONFIGURACIÓN DE MISIÓN</h2>", unsafe_allow_html=True)
     
-    if st.button("▶️ START MISSION"):
-        st.session_state.data = {"lote": lote, "t": t_ciclo, "costo": costo, "precio": precio}
-        st.session_state.step = "game"
+    c1, c2 = st.columns(2)
+    lote = c1.number_input("CANTIDAD DE PIEZAS", 5, 20, 5)
+    precio = c2.number_input("PRECIO DE VENTA ($)", 50, 500, 150)
+    
+    st.session_state.config = {"lote": lote, "precio": precio, "costo": 40}
+    
+    if st.button("🚀 CONFIRMAR Y LANZAR"):
+        st.session_state.step = "play"
         st.rerun()
 
-# --- FACETA 2: JUEGO Y CÁLCULOS ---
-elif st.session_state.step == "game":
-    d = st.session_state.data
+# --- FACETA 3: EL JUEGO (SIMULACIÓN + DIÁLOGOS) ---
+elif st.session_state.step == "play":
+    conf = st.session_state.config
     
-    # HUD SUPERIOR (Cálculos en tiempo real)
-    h1, h2, h3 = st.columns(3)
-    cash_hud = h1.empty()
-    yield_hud = h2.empty()
-    status_hud = h3.empty()
+    # HUD (Marcador)
+    h1, h2 = st.columns(2)
+    h1.markdown(f"<p class='stat-label'>💰 ORO: ${st.session_state.gold}</p>", unsafe_allow_html=True)
+    progreso_txt = h2.empty()
 
-    # VIEWPORT (El mapa de la fábrica)
-    st.markdown('<div class="game-viewport">', unsafe_allow_html=True)
-    row1 = st.columns(3)
-    row2 = st.columns(3)
-    row3 = st.columns(3)
-    
-    # Creamos un mapa de placeholders para animar
-    placeholders = {
-        (0,0): row1[0].empty(), (0,2): row1[2].empty(),
-        (2,2): row3[2].empty()
-    }
-    
-    # Dibujar decoraciones estáticas en el grid
-    for c in [1]: row1[c].markdown('<div class="pixel-tile">⛓️</div>', unsafe_allow_html=True)
-    for c in [0,1,2]: row2[c].markdown('<div class="pixel-tile"></div>', unsafe_allow_html=True)
+    # VIEWPORT (El mundo del juego)
+    st.markdown('<div class="viewport">', unsafe_allow_html=True)
+    col_a, col_b, col_c = st.columns(3)
+    v_corte = col_a.empty()
+    v_trans = col_b.empty()
+    v_ensam = col_c.empty()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Lógica de Simulación
-    cash, buenas = 0, 0
-    
-    for i in range(1, d['lote'] + 1):
-        sku = f"PZ-{i}"
-        
-        # 1. ESTACIÓN: CORTE
-        placeholders[(0,0)].markdown('<div class="pixel-tile"><span class="sprite-img">👷⚙️</span><br>PROCESANDO...</div>', unsafe_allow_html=True)
-        status_hud.markdown(f"<div class='hud-panel'>STATUS: {sku} IN CORTE</div>", unsafe_allow_html=True)
-        time.sleep(d['t'])
-        
-        # 2. MOVIMIENTO (EL INGENIERO "CAMINA")
-        placeholders[(0,0)].markdown('<div class="pixel-tile">⚙️</div>', unsafe_allow_html=True)
-        status_hud.markdown(f"<div class='hud-panel'>STATUS: MOVING TO ASSEMBLY</div>", unsafe_allow_html=True)
-        time.sleep(0.5)
+    # Cuadro de Diálogo
+    dialogo = st.empty()
 
-        # 3. ESTACIÓN: ENSAMBLE
-        placeholders[(0,2)].markdown('<div class="pixel-tile"><span class="sprite-img">👷🤖</span><br>ENSAMBLANDO...</div>', unsafe_allow_html=True)
-        time.sleep(d['t'])
+    for i in range(1, conf['lote'] + 1):
+        progreso_txt.markdown(f"<p class='stat-label'>PIEZA: {i}/{conf['lote']}</p>", unsafe_allow_html=True)
         
-        # CÁLCULOS FINALES POR PIEZA
-        error = np.random.random() < 0.1
-        if not error:
-            buenas += 1
-            cash += (d['precio'] - d['costo'])
-            res_icon = "📦✅"
-        else:
-            cash -= d['costo']
-            res_icon = "🗑️❌"
-            
-        # 4. SALIDA
-        placeholders[(0,2)].markdown('<div class="pixel-tile">🤖</div>', unsafe_allow_html=True)
-        placeholders[(2,2)].markdown(f'<div class="pixel-tile"><span class="sprite-img">{res_icon}</span></div>', unsafe_allow_html=True)
+        # 1. INGENIERO EN CORTE
+        v_corte.markdown("<div class='sprite'>👷⚙️</div>", unsafe_allow_html=True)
+        dialogo.markdown("<div class='dialog-box'>INGENIERO: Iniciando corte de precisión... Esto nos costará $20 de energía.</div>", unsafe_allow_html=True)
+        time.sleep(2)
         
-        # ACTUALIZAR HUD
-        cash_hud.markdown(f"<div class='hud-panel'>CASH: ${round(cash,2)}</div>", unsafe_allow_html=True)
-        yield_hud.markdown(f"<div class='hud-panel'>YIELD: {round((buenas/i)*100,1)}%</div>", unsafe_allow_html=True)
-        
+        # 2. CAMINANDO
+        v_corte.markdown("<div class='sprite'>⚙️</div>", unsafe_allow_html=True)
+        v_trans.markdown("<div class='sprite'>🚶...📦</div>", unsafe_allow_html=True)
+        dialogo.markdown("<div class='dialog-box'>INGENIERO: Llevando la pieza a la siguiente estación. ¡Cuidado con la banda!</div>", unsafe_allow_html=True)
         time.sleep(1)
-        placeholders[(2,2)].empty()
+        v_trans.empty()
 
-    if st.button("🎮 RESTART"):
-        st.session_state.step = "setup"
+        # 3. ENSAMBLE Y CÁLCULO
+        v_ensam.markdown("<div class='sprite'>🤖👷</div>", unsafe_allow_html=True)
+        dialogo.markdown("<div class='dialog-box'>INGENIERO: Ensamblando componentes finales... ¡Casi listo!</div>", unsafe_allow_html=True)
+        time.sleep(2)
+
+        # RESULTADO FINAL
+        fallo = np.random.random() < 0.15
+        if fallo:
+            st.session_state.gold -= conf['costo']
+            v_ensam.markdown("<div class='sprite'>🤖💥</div>", unsafe_allow_html=True)
+            dialogo.markdown(f"<div class='dialog-box'>INGENIERO: ¡OH NO! La pieza SKU-{i} ha fallado el test. Perdimos ${conf['costo']} en materiales.</div>", unsafe_allow_html=True)
+        else:
+            ganancia = conf['precio'] - conf['costo']
+            st.session_state.gold += ganancia
+            v_ensam.markdown("<div class='sprite'>🤖✨</div>", unsafe_allow_html=True)
+            dialogo.markdown(f"<div class='dialog-box'>INGENIERO: ¡Excelente! La pieza SKU-{i} es perfecta. Ganamos ${ganancia} netos.</div>", unsafe_allow_html=True)
+        
+        # Actualizar HUD
+        h1.markdown(f"<p class='stat-label'>💰 ORO: ${st.session_state.gold}</p>", unsafe_allow_html=True)
+        time.sleep(3)
+        v_ensam.empty()
+
+    st.balloons()
+    if st.button("🔄 REINTENTAR MISIÓN"):
+        st.session_state.step = "inicio"
+        st.session_state.gold = 0
         st.rerun()
