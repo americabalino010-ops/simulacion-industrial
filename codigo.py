@@ -4,123 +4,127 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Blueprint V35", layout="wide")
+st.set_page_config(page_title="Pixel Factory V36", layout="wide")
 
-# --- ESTILOS DE PLANO TÉCNICO ---
+# --- ESTILOS PIXEL ART (RETRO RPG) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #f3f4f6; }
-    .blueprint-grid {
-        background-color: #ffffff;
-        border: 2px solid #374151;
-        border-radius: 8px;
-        padding: 20px;
-        box-shadow: 5px 5px 0px #374151;
+    /* Estilo general retro */
+    .stApp { background-color: #2c3e50; }
+    
+    /* El "suelo" de baldosas de la fábrica */
+    .pixel-grid {
+        background-color: #95a5a6;
+        border: 4px solid #34495e;
+        padding: 5px;
+        display: grid;
     }
-    .estacion-tecnica {
-        background-color: #f9fafb;
-        border: 2px solid #1e3a8a;
-        height: 180px;
+    
+    /* Cada baldosa/tile del mapa */
+    .tile {
+        background-color: #bdc3c7;
+        border: 1px solid #7f8c8d;
+        height: 120px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         position: relative;
     }
-    .label-maquina {
-        background-color: #1e3a8a;
-        color: white;
-        width: 100%;
-        font-size: 12px;
-        font-weight: bold;
-        padding: 4px 0;
-        position: absolute;
-        top: 0;
+    
+    /* Personajes y máquinas con sombra de píxel */
+    .sprite {
+        font-size: 40px;
+        filter: drop-shadow(2px 2px 0px #000);
     }
-    .ingeniero-icon {
-        font-size: 30px;
-        position: absolute;
-        bottom: 5px;
-        right: 5px;
-        filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
+    
+    .label-retro {
+        background-color: #000;
+        color: #33ff33; /* Verde terminal antigua */
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 10px;
+        padding: 2px 5px;
+        border: 1px solid #33ff33;
+        margin-top: 5px;
+    }
+    
+    /* Estilo del menú de selección (como el de tu imagen) */
+    .menu-retro {
+        background-color: #2980b9;
+        color: white;
+        border: 3px solid white;
+        padding: 10px;
+        font-family: 'Courier New', Courier, monospace;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADO DEL INGENIERO ---
-if 'ing_x' not in st.session_state: st.session_state.ing_x = 2
-if 'ing_y' not in st.session_state: st.session_state.ing_y = 2
+# --- ESTADO DEL PERSONAJE ---
+if 'px' not in st.session_state: st.session_state.px = 1
+if 'py' not in st.session_state: st.session_state.py = 1
 
-# --- SIDEBAR: PANEL DE CONTROL ---
-st.sidebar.title("🎮 Control de Planta")
+# --- PANEL DE CONTROL (RPG STYLE) ---
+st.sidebar.title("🎮 COMMAND MENU")
+st.sidebar.write(f"PLAYER POS: [{st.session_state.px},{st.session_state.py}]")
 
-# Mando Direccional para el Ingeniero
-st.sidebar.write("### Desplazar Supervisor")
+# Pad de movimiento
 c1, c2, c3 = st.sidebar.columns(3)
 if c2.button("▲"):
-    if st.session_state.ing_y > 1: st.session_state.ing_y -= 1
+    if st.session_state.py > 1: st.session_state.py -= 1
 c4, c5, c6 = st.sidebar.columns(3)
 if c4.button("◀"):
-    if st.session_state.ing_x > 1: st.session_state.ing_x -= 1
+    if st.session_state.px > 1: st.session_state.px -= 1
 if c5.button("▼"):
-    if st.session_state.ing_y < 3: st.session_state.ing_y += 1
+    if st.session_state.py < 3: st.session_state.py += 1
 if c6.button("▶"):
-    if st.session_state.ing_x < 3: st.session_state.ing_x += 1
+    if st.session_state.px < 3: st.session_state.px += 1
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🏗️ Diseño de Línea")
-estaciones = ["Corte CNC", "Torno", "Prensa", "Ensamble", "Inspección"]
-seleccion = st.sidebar.multiselect("Añadir Equipos:", estaciones, default=["Corte CNC", "Ensamble"])
+st.sidebar.subheader("🏗️ BUILDER")
+maquinas = st.sidebar.multiselect("Añadir a la sala:", ["Computadora", "Laboratorio", "Banda", "Generador"], default=["Computadora", "Laboratorio"])
 
-config_plan = {}
-for est in seleccion:
-    with st.sidebar.expander(f"📍 Ubicación: {est}"):
-        cx = st.selectbox(f"Col X - {est}", [1, 2, 3], index=seleccion.index(est) % 3)
-        ry = st.selectbox(f"Fila Y - {est}", [1, 2, 3], index=seleccion.index(est) // 3)
-        config_plan[est] = {"x": cx, "y": ry}
+config_pixel = {}
+for m in maquinas:
+    with st.sidebar.expander(f"📍 Set {m}"):
+        mx = st.selectbox(f"Col X - {m}",, index=maquinas.index(m)%3)
+        my = st.selectbox(f"Fila Y - {m}",, index=maquinas.index(m)//3)
+        config_pixel[m] = {"x": mx, "y": my}
 
-run = st.sidebar.button("▶️ INICIAR PRODUCCIÓN", use_container_width=True)
+run_sim = st.sidebar.button("▶️ START OPERATION")
 
-# --- PANTALLA PRINCIPAL: EL BLUEPRINT ---
-st.title("🗺️ Plano Técnico: Gemelo Digital")
+# --- MAPA DE JUEGO (PIXEL GRID) ---
+st.title("📟 Planta de Procesamiento 16-bit")
 
-# Renderizado del Plano
-grid_placeholders = {}
-
-st.markdown('<div class="blueprint-grid">', unsafe_allow_html=True)
-for r in [1, 2, 3]:
+# Renderizado del mapa
+st.markdown('<div class="pixel-grid">', unsafe_allow_html=True)
+for r in:
     cols = st.columns(3)
-    for c in [1, 2, 3]:
-        es_ing = (st.session_state.ing_x == c and st.session_state.ing_y == r)
-        est_en_punto = [k for k, v in config_plan.items() if v['x'] == c and v['y'] == r]
+    for c in:
+        is_player = (st.session_state.px == c and st.session_state.py == r)
+        obj_en_punto = [k for k, v in config_pixel.items() if v['x'] == c and v['y'] == r]
         
         with cols[c-1]:
-            html = "<div class='estacion-tecnica'>"
-            if es_ing:
-                html += "<div class='ingeniero-icon'>👷</div>"
+            st.markdown('<div class="tile">', unsafe_allow_html=True)
             
-            if est_en_punto:
-                nombre = est_en_punto[0]
-                html += f"<div class='label-maquina'>{nombre.upper()}</div>"
-                # Iconografía según el tipo de máquina (basado en tu imagen)
-                iconos = {"Corte CNC": "📠", "Torno": "🔩", "Prensa": "🏗️", "Ensamble": "🤖", "Inspección": "🔬"}
-                html += f"<h1 style='margin-top:20px;'>{iconos.get(nombre, '⚙️')}</h1>"
-                st.markdown(html + "</div>", unsafe_allow_html=True)
-                grid_placeholders[nombre] = st.empty()
-            else:
-                html += "<small style='color:#ccc;'>ZONA LIBRE</small>"
-                st.markdown(html + "</div>", unsafe_allow_html=True)
+            # Dibujar Objeto/Máquina
+            if obj_en_punto:
+                obj = obj_en_punto
+                icons = {"Computadora": "🖥️", "Laboratorio": "🧪", "Banda": "⛓️", "Generador": "⚡"}
+                st.markdown(f'<div class="sprite">{icons.get(obj, "📦")}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="label-retro">{obj.upper()}</div>', unsafe_allow_html=True)
+            
+            # Dibujar Jugador encima o solo
+            if is_player:
+                st.markdown('<div class="sprite" style="position:absolute; top:10px;">🤵</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- SIMULACIÓN ---
-if run:
-    status_bar = st.progress(0)
-    for i in range(1, 6):
-        for est in seleccion:
-            grid_placeholders[est].info(f"📦 Procesando...")
-            time.sleep(1)
-            grid_placeholders[est].success("✅ OK")
-            time.sleep(0.5)
-            grid_placeholders[est].empty()
-        status_bar.progress(i * 20)
-    st.balloons()
+# --- LÓGICA DE SIMULACIÓN ---
+if run_sim:
+    st.markdown('<div class="menu-retro">SISTEMA INICIADO... PROCESANDO DATOS...</div>', unsafe_allow_html=True)
+    progress = st.progress(0)
+    for p in range(1, 101, 10):
+        time.sleep(0.3)
+        progress.progress(p)
+    st.success("OPERACIÓN COMPLETADA CON ÉXITO")
