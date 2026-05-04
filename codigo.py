@@ -4,18 +4,13 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Designer V26", layout="wide")
+st.set_page_config(page_title="Industrial Designer V27", layout="wide")
 
-# --- ESTILOS CSS CORREGIDOS (COLORES Y CONTRASTE) ---
+# --- ESTILOS CSS CORREGIDOS (ALTO CONTRASTE) ---
 st.markdown("""
     <style>
-    /* Fondo de la aplicación */
     .stApp { background-color: #f0f2f6; }
-    
-    /* Títulos principales en azul oscuro para que se vean bien */
     h1, h2, h3 { color: #1e3a8a !important; font-weight: bold; }
-    
-    /* Estilo de las cajas de las estaciones */
     .estacion { 
         background-color: #ffffff; 
         border: 3px solid #1e3a8a; 
@@ -23,10 +18,8 @@ st.markdown("""
         padding: 20px; 
         text-align: center; 
         box-shadow: 4px 4px 10px rgba(0,0,0,0.1);
-        color: #111827; /* Texto negro dentro de la caja */
+        color: #111827;
     }
-    
-    /* Banda transportadora oscura */
     .banda { 
         background-color: #374151; 
         height: 15px; 
@@ -34,21 +27,18 @@ st.markdown("""
         border-radius: 8px;
         border: 1px solid #111827;
     }
-    
-    /* Medidores (Gauges) con colores fuertes */
     .gauge { 
         font-size: 22px; 
         font-weight: bold; 
         color: #1e3a8a;
-        margin-bottom: 5px;
     }
-    
-    /* Texto de métricas (KPIs) */
     [data-testid="stMetricValue"] { color: #1e3a8a !important; }
+    /* Ajuste para que los textos de la barra lateral se vean */
+    .css-17l2qt2 { color: #ffffff !important; } 
     </style>
     """, unsafe_allow_html=True)
 
-# --- BARRA LATERAL (HERRAMIENTAS) ---
+# --- BARRA LATERAL ---
 st.sidebar.title("🛠️ Facility Tools")
 st.sidebar.markdown("---")
 
@@ -72,7 +62,7 @@ st.title("🏭 Planta de Producción: Vista de Planta")
 st.write("---")
 
 if iniciar:
-    # 1. KPIs Superiores
+    # KPIs Superiores
     k1, k2, k3, k4 = st.columns(4)
     met_util = k1.empty()
     met_yield = k2.empty()
@@ -81,26 +71,26 @@ if iniciar:
 
     st.write("### 🧩 Monitor de Línea")
     
-    # 2. Medidores (Gauges)
-    g1, g2, g3, g4, g5 = st.columns(5)
-    gauge_a = g1.empty()
-    gauge_b = g3.empty()
-    gauge_c = g5.empty()
+    # 1. Medidores (Gauges) - CORREGIDO
+    cols_g = st.columns(5)
+    gauge_a = cols_g[0].empty()
+    gauge_b = cols_g[2].empty()
+    gauge_c = cols_g[4].empty()
 
-    # 3. Diseño de la Línea Física
-    m_a, b1, m_b, b2, m_c = st.columns()
+    # 2. Diseño de la Línea - CORREGIDO (Aquí estaba el error)
+    m_a, b1, m_b, b2, m_c = st.columns(5) # <-- Agregado el (5)
 
     with m_a:
         st.markdown('<div class="estacion">⚙️<br><b>DESPULPADO</b></div>', unsafe_allow_html=True)
         v_a = st.empty()
 
-    v_b1 = b1.empty()
+    with b1: v_b1 = st.empty()
 
     with m_b:
         st.markdown('<div class="estacion">🌀<br><b>MOLIENDA</b></div>', unsafe_allow_html=True)
         v_b = st.empty()
 
-    v_b2 = b2.empty()
+    with b2: v_b2 = st.empty()
 
     with m_c:
         st.markdown('<div class="estacion">📦<br><b>ENSACADO</b></div>', unsafe_allow_html=True)
@@ -125,7 +115,7 @@ if iniciar:
         # TRÁNSITO 1
         for d in [".", "..", "...", "📦", "...", "✔"]:
             v_b1.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
-            time.sleep(0.15)
+            time.sleep(0.1)
         v_b1.markdown('<div class="banda"></div>', unsafe_allow_html=True)
 
         # FASE 2
@@ -138,7 +128,7 @@ if iniciar:
         # TRÁNSITO 2
         for d in [".", "..", "...", "📦", "...", "✔"]:
             v_b2.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
-            time.sleep(0.15)
+            time.sleep(0.1)
         v_b2.markdown('<div class="banda"></div>', unsafe_allow_html=True)
 
         # FASE 3
@@ -152,12 +142,11 @@ if iniciar:
             res = "RECHAZADA"
         else:
             buenas += 1
-            ganancia = precio_vta - costo_pz
-            dinero += ganancia
+            dinero += (precio_vta - costo_pz)
             v_c.success(f"✅ OK")
             res = "OK"
 
-        # ACTUALIZAR KPIs
+        # KPIs
         met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
         met_yield.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
         met_scrap.metric("Costo Scrap", f"${round(scrap, 2)}", delta_color="inverse")
