@@ -3,131 +3,115 @@ import pandas as pd
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Factory Architect V29", layout="wide")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Blueprint Designer V32", layout="wide")
 
-# --- ESTILOS ---
+# --- ESTILOS DE PLANTA ---
 st.markdown("""
     <style>
-    .stApp { background-color: #f0f2f6; }
-    .estacion-box { 
-        background-color: #ffffff; 
-        border: 3px solid #1e3a8a; 
-        border-radius: 12px; 
-        padding: 15px; 
-        text-align: center; 
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+    .grid-cell {
+        border: 2px solid #dee2e6;
+        border-radius: 12px;
+        min-height: 140px;
+        background-color: #ffffff;
+        text-align: center;
+        padding: 10px;
     }
-    h1, h2, h3 { color: #1e3a8a !important; font-weight: bold; }
-    .stMetric { background-color: #ffffff; border-radius: 10px; padding: 10px; border: 1px solid #dee2e6; }
+    .kpi-card { background-color: #1e3a8a; color: white; padding: 10px; border-radius: 8px; text-align: center; }
+    .ing-label { color: #f39c12; font-weight: bold; font-size: 18px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- PANEL DE DISEÑO (SIDEBAR) ---
-st.sidebar.title("🏗️ Factory Architect")
-st.sidebar.markdown("---")
+# --- PANEL LATERAL: TOOLS ---
+st.sidebar.title("🏗️ Factory Blueprint")
 
-# 1. Selección de Estaciones
-st.sidebar.subheader("📐 Diseño de Línea")
-estaciones_seleccionadas = st.sidebar.multiselect(
-    "Añade estaciones a tu flujo:",
-    ["Corte CNC", "Pulido", "Pintura", "Ensamble", "Inspección"],
-    default=["Corte CNC", "Ensamble"]
-)
+# 1. DISEÑO DEL PLANO
+estaciones_disponibles = ["Corte", "Pulido", "Pintura", "Ensamble", "Calidad"]
+seleccion = st.sidebar.multiselect("1. Elige Estaciones:", estaciones_disponibles, default=["Corte", "Ensamble"])
 
-# 2. Configuración Individual por Estación
-config_estaciones = {}
-if estaciones_seleccionadas:
+config_plan = {}
+if seleccion:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("⚙️ Ajustes por Estación")
-    for est in estaciones_seleccionadas:
-        with st.sidebar.expander(f"Parámetros: {est}"):
-            t_ciclo = st.slider(f"Tiempo de Ciclo (s) - {est}", 0.5, 5.0, 2.0, key=f"t_{est}")
-            p_error = st.slider(f"Tasa de Fallo (%) - {est}", 0, 20, 2, key=f"e_{est}")
-            config_estaciones[est] = {"tiempo": t_ciclo, "error": p_error}
+    st.sidebar.subheader("2. Ubicación de Máquinas")
+    for est in seleccion:
+        with st.sidebar.expander(f"📍 Posición: {est}"):
+            # El usuario elige X e Y para cada máquina
+            col_x = st.selectbox(f"Columna (X) - {est}", [1, 2, 3], index=seleccion.index(est) % 3)
+            row_y = st.selectbox(f"Fila (Y) - {est}", [1, 2, 3], index=0)
+            config_plan[est] = {"x": col_x, "y": row_y, "t": 2, "e": 5}
 
-# 3. Parámetros Globales
 st.sidebar.markdown("---")
-st.sidebar.subheader("💰 Parámetros Económicos")
-n_lote = st.sidebar.number_input("Lote de Producción", 5, 50, 10)
-c_mat = st.sidebar.number_input("Costo Materia Prima ($)", 10.0, 100.0, 25.0)
-v_precio = st.sidebar.number_input("Precio Venta Final ($)", 50.0, 500.0, 150.0)
+st.sidebar.subheader("👷 Control del Ingeniero")
+# CONTROLES MANUALES PARA EL INGENIERO
+ing_x = st.sidebar.slider("Desplazar Ingeniero (X)", 1, 3, 2)
+ing_y = st.sidebar.slider("Desplazar Ingeniero (Y)", 1, 3, 2)
+
+st.sidebar.markdown("---")
+btn_run = st.sidebar.button("▶️ INICIAR PRODUCCIÓN", use_container_width=True)
 
 # --- PANTALLA PRINCIPAL ---
-st.title("🏭 Constructor de Planta Dinámico")
+st.title("🗺️ Centro de Mando: Layout Interactivo")
 
-if not estaciones_seleccionadas:
-    st.info("👈 Selecciona estaciones en el panel izquierdo para comenzar a diseñar tu planta.")
+if not seleccion:
+    st.info("👈 Diseña tu layout y coloca al ingeniero en el panel lateral.")
 else:
-    # Mostrar el flujo diseñado
-    st.write(f"### 🧬 Secuencia de Producción: {' ⮕ '.join(estaciones_seleccionadas)}")
+    # Métricas
+    k1, k2, k3 = st.columns(3)
+    m_util = k1.empty()
+    m_oee = k2.empty()
+    m_ing = k3.empty()
+    m_ing.markdown(f"<div class='kpi-card'>👷 POSICIÓN ING: ({ing_x}, {ing_y})</div>", unsafe_allow_html=True)
+
+    # --- RENDERIZADO DEL MAPA (GRID 3x3) ---
+    grid_placeholders = {}
     
-    if st.sidebar.button("▶️ EJECUTAR SIMULACIÓN PERSONALIZADA", use_container_width=True):
-        # Contenedores de KPIs
-        k1, k2, k3, k4 = st.columns(4)
-        met_util = k1.empty()
-        met_oee = k2.empty()
-        met_scrap = k3.empty()
-        met_prog = k4.empty()
-
-        st.write("---")
-        
-        # Dibujar Layout de Planta
-        columnas_viz = st.columns(len(estaciones_seleccionadas))
-        placeholder_viz = []
-        for idx, est in enumerate(estaciones_seleccionadas):
-            with columnas_viz[idx]:
-                st.markdown(f'<div class="estacion-box"><b>{est}</b></div>', unsafe_allow_html=True)
-                placeholder_viz.append(st.empty())
-
-        # --- LÓGICA DE SIMULACIÓN ---
-        utilidad_total, scrap_total, buenas = 0, 0, 0
-        historial = []
-
-        for i in range(1, n_lote + 1):
-            sku = f"PZ-{i}"
-            costo_acumulado = c_mat
-            fallo_en_pieza = False
+    for r in [1, 2, 3]:
+        cols = st.columns(3)
+        for c in [1, 2, 3]:
+            # Detectar si hay una máquina en este punto
+            est_en_punto = [k for k, v in config_plan.items() if v['x'] == c and v['y'] == r]
             
-            # Recorrido por cada estación diseñada
-            for idx, est in enumerate(estaciones_seleccionadas):
-                placeholder_viz[idx].info(f"Procesando {sku}...")
+            with cols[c-1]:
+                # SI ESTÁ EL INGENIERO EN ESTA COORDENADA
+                if ing_x == c and ing_y == r:
+                    st.markdown("<div class='ing-label'>👷 SUPERVISOR AQUÍ</div>", unsafe_allow_html=True)
                 
-                # Cálculos basados en los sliders del usuario
-                t_est = config_estaciones[est]["tiempo"]
-                e_est = config_estaciones[est]["error"]
-                
-                # Cada segundo de máquina cuesta $2.0 (Energía/Mano de Obra)
-                costo_acumulado += (t_est * 2.0)
-                
-                time.sleep(1) # Simulación de tiempo visual
-                
-                # Verificar si falla en esta estación
-                if (np.random.random() * 100) < e_est:
-                    fallo_en_pieza = True
-                    placeholder_viz[idx].error("❌ FALLO")
-                    break # Se detiene el proceso si falla
+                if est_en_punto:
+                    nombre = est_en_punto[0]
+                    st.markdown(f"<div class='grid-cell'>⚙️<br><b>{nombre.upper()}</b><br><small>Coord: {c},{r}</small></div>", unsafe_allow_html=True)
+                    grid_placeholders[nombre] = st.empty()
                 else:
-                    placeholder_viz[idx].success("✅ LISTO")
+                    st.markdown("<div class='grid-cell' style='opacity:0.3; border-style:dashed;'><br>Zona Libre</div>", unsafe_allow_html=True)
 
-            # Resultado Final
-            if fallo_en_pieza:
-                scrap_total += costo_acumulado
-                res = "RECHAZADA"
-            else:
-                buenas += 1
-                utilidad_total += (v_precio - costo_acumulado)
-                res = "OK"
-
-            # Actualizar KPIs
-            met_util.metric("Utilidad Neta", f"${round(utilidad_total, 2)}")
-            met_oee.metric("Calidad (Yield)", f"{round((buenas/i)*100, 1)}%")
-            met_scrap.metric("Costo Scrap", f"${round(scrap_total, 2)}", delta_color="inverse")
-            met_prog.metric("Avance", f"{i}/{n_lote}")
+    # --- LÓGICA DE PRODUCCIÓN ---
+    if btn_run:
+        buenas, dinero = 0, 0
+        for i in range(1, 11): # Lote de 10 piezas
+            sku = f"PZ-{i}"
+            fail = False
             
-            historial.append({"SKU": sku, "Estado": res, "Costo Final": round(costo_acumulado, 2)})
-            time.sleep(0.5)
+            for est in seleccion:
+                conf = config_plan[est]
+                
+                # LA PIEZA SE PROCESA
+                grid_placeholders[est].info(f"📦 {sku}...")
+                time.sleep(1.5)
+                
+                # CALIDAD
+                if (np.random.random() * 100) < 5:
+                    grid_placeholders[est].error("❌ RECHAZO")
+                    fail = True
+                    break
+                else:
+                    grid_placeholders[est].success("✅ OK")
+                    time.sleep(0.5)
+                    grid_placeholders[est].empty()
 
+            if not fail:
+                buenas += 1
+                dinero += 100
+            
+            m_util.metric("Utilidad", f"${dinero}")
+            m_oee.metric("OEE", f"{round((buenas/i)*100, 1)}%")
+        
         st.balloons()
-        st.write("### 📝 Reporte de Diseño de Línea")
-        st.dataframe(pd.DataFrame(historial), use_container_width=True)
