@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Blueprint Designer V32", layout="wide")
+st.set_page_config(page_title="Factory Pad V33", layout="wide")
 
 # --- ESTILOS DE PLANTA ---
 st.markdown("""
@@ -12,106 +12,91 @@ st.markdown("""
     .grid-cell {
         border: 2px solid #dee2e6;
         border-radius: 12px;
-        min-height: 140px;
+        min-height: 150px;
         background-color: #ffffff;
         text-align: center;
         padding: 10px;
+        transition: 0.3s;
     }
-    .kpi-card { background-color: #1e3a8a; color: white; padding: 10px; border-radius: 8px; text-align: center; }
-    .ing-label { color: #f39c12; font-weight: bold; font-size: 18px; }
+    .ing-cell { background-color: #fff9db !important; border: 2px solid #f39c12 !important; }
+    .ing-icon { font-size: 30px; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- PANEL LATERAL: TOOLS ---
-st.sidebar.title("🏗️ Factory Blueprint")
+# --- ESTADO DEL INGENIERO (Para que no se resetee la posición) ---
+if 'ing_x' not in st.session_state: st.session_state.ing_x = 2
+if 'ing_y' not in st.session_state: st.session_state.ing_y = 2
 
-# 1. DISEÑO DEL PLANO
+# --- PANEL LATERAL: CONTROL PAD ---
+st.sidebar.title("🕹️ Control de Supervisor")
+st.sidebar.write(f"Posición Actual: **({st.session_state.ing_x}, {st.session_state.ing_y})**")
+
+# Botones de movimiento (Pad Direccional)
+col_l, col_u_d, col_r = st.sidebar.columns(3)
+
+if col_u_d.button("▲"):
+    if st.session_state.ing_y > 1: st.session_state.ing_y -= 1
+
+col_l_btn, col_down, col_r_btn = st.sidebar.columns(3)
+if col_l_btn.button("◀"):
+    if st.session_state.ing_x > 1: st.session_state.ing_x -= 1
+if col_down.button("▼"):
+    if st.session_state.ing_y < 3: st.session_state.ing_y += 1
+if col_r_btn.button("▶"):
+    if st.session_state.ing_x < 3: st.session_state.ing_x += 1
+
+st.sidebar.markdown("---")
+# --- DISEÑO DE PLANTA ---
 estaciones_disponibles = ["Corte", "Pulido", "Pintura", "Ensamble", "Calidad"]
-seleccion = st.sidebar.multiselect("1. Elige Estaciones:", estaciones_disponibles, default=["Corte", "Ensamble"])
+seleccion = st.sidebar.multiselect("Configura Estaciones:", estaciones_disponibles, default=["Corte", "Ensamble"])
 
 config_plan = {}
 if seleccion:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("2. Ubicación de Máquinas")
     for est in seleccion:
-        with st.sidebar.expander(f"📍 Posición: {est}"):
-            # El usuario elige X e Y para cada máquina
-            col_x = st.selectbox(f"Columna (X) - {est}", [1, 2, 3], index=seleccion.index(est) % 3)
-            row_y = st.selectbox(f"Fila (Y) - {est}", [1, 2, 3], index=0)
-            config_plan[est] = {"x": col_x, "y": row_y, "t": 2, "e": 5}
+        with st.sidebar.expander(f"📍 {est}"):
+            col_x = st.selectbox(f"X - {est}", [1, 2, 3], index=seleccion.index(est) % 3)
+            row_y = st.selectbox(f"Y - {est}", [1, 2, 3], index=0)
+            config_plan[est] = {"x": col_x, "y": row_y}
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("👷 Control del Ingeniero")
-# CONTROLES MANUALES PARA EL INGENIERO
-ing_x = st.sidebar.slider("Desplazar Ingeniero (X)", 1, 3, 2)
-ing_y = st.sidebar.slider("Desplazar Ingeniero (Y)", 1, 3, 2)
-
-st.sidebar.markdown("---")
-btn_run = st.sidebar.button("▶️ INICIAR PRODUCCIÓN", use_container_width=True)
+btn_run = st.sidebar.button("🚀 INICIAR SIMULACIÓN", use_container_width=True)
 
 # --- PANTALLA PRINCIPAL ---
-st.title("🗺️ Centro de Mando: Layout Interactivo")
+st.title("🗺️ Factory Blueprint: Control Interactivo")
 
-if not seleccion:
-    st.info("👈 Diseña tu layout y coloca al ingeniero en el panel lateral.")
-else:
-    # Métricas
-    k1, k2, k3 = st.columns(3)
-    m_util = k1.empty()
-    m_oee = k2.empty()
-    m_ing = k3.empty()
-    m_ing.markdown(f"<div class='kpi-card'>👷 POSICIÓN ING: ({ing_x}, {ing_y})</div>", unsafe_allow_html=True)
+# Renderizado del mapa
+grid_placeholders = {}
 
-    # --- RENDERIZADO DEL MAPA (GRID 3x3) ---
-    grid_placeholders = {}
-    
-    for r in [1, 2, 3]:
-        cols = st.columns(3)
-        for c in [1, 2, 3]:
-            # Detectar si hay una máquina en este punto
-            est_en_punto = [k for k, v in config_plan.items() if v['x'] == c and v['y'] == r]
-            
-            with cols[c-1]:
-                # SI ESTÁ EL INGENIERO EN ESTA COORDENADA
-                if ing_x == c and ing_y == r:
-                    st.markdown("<div class='ing-label'>👷 SUPERVISOR AQUÍ</div>", unsafe_allow_html=True)
-                
-                if est_en_punto:
-                    nombre = est_en_punto[0]
-                    st.markdown(f"<div class='grid-cell'>⚙️<br><b>{nombre.upper()}</b><br><small>Coord: {c},{r}</small></div>", unsafe_allow_html=True)
-                    grid_placeholders[nombre] = st.empty()
-                else:
-                    st.markdown("<div class='grid-cell' style='opacity:0.3; border-style:dashed;'><br>Zona Libre</div>", unsafe_allow_html=True)
-
-    # --- LÓGICA DE PRODUCCIÓN ---
-    if btn_run:
-        buenas, dinero = 0, 0
-        for i in range(1, 11): # Lote de 10 piezas
-            sku = f"PZ-{i}"
-            fail = False
-            
-            for est in seleccion:
-                conf = config_plan[est]
-                
-                # LA PIEZA SE PROCESA
-                grid_placeholders[est].info(f"📦 {sku}...")
-                time.sleep(1.5)
-                
-                # CALIDAD
-                if (np.random.random() * 100) < 5:
-                    grid_placeholders[est].error("❌ RECHAZO")
-                    fail = True
-                    break
-                else:
-                    grid_placeholders[est].success("✅ OK")
-                    time.sleep(0.5)
-                    grid_placeholders[est].empty()
-
-            if not fail:
-                buenas += 1
-                dinero += 100
-            
-            m_util.metric("Utilidad", f"${dinero}")
-            m_oee.metric("OEE", f"{round((buenas/i)*100, 1)}%")
+for r in [1, 2, 3]:
+    cols = st.columns(3)
+    for c in [1, 2, 3]:
+        # Detectar si el ingeniero está aquí
+        es_ingeniero = (st.session_state.ing_x == c and st.session_state.ing_y == r)
+        est_en_punto = [k for k, v in config_plan.items() if v['x'] == c and v['y'] == r]
         
-        st.balloons()
+        with cols[c-1]:
+            clase_ing = "ing-cell" if es_ingeniero else ""
+            html_cell = f"<div class='grid-cell {clase_ing}'>"
+            
+            if es_ingeniero:
+                html_cell += "<div class='ing-icon'>👷</div>"
+            
+            if est_en_punto:
+                nombre = est_en_punto[0]
+                html_cell += f"⚙️<br><b>{nombre.upper()}</b><br><small>{c},{r}</small>"
+                grid_placeholders[nombre] = st.empty()
+            else:
+                html_cell += f"<br><small style='color:gray;'>Zona {c},{r}</small>"
+            
+            html_cell += "</div>"
+            st.markdown(html_cell, unsafe_allow_html=True)
+
+# --- LÓGICA DE SIMULACIÓN ---
+if btn_run:
+    for i in range(1, 6): # Lote de 5 para probar
+        for est in seleccion:
+            grid_placeholders[est].info(f"📦 Procesando...")
+            time.sleep(1)
+            grid_placeholders[est].success("✅ OK")
+            time.sleep(0.5)
+            grid_placeholders[est].empty()
+    st.balloons()
