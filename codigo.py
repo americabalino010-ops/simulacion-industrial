@@ -4,128 +4,124 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Nexus Ops Center", layout="wide")
+st.set_page_config(page_title="Simulador de Planta V24", layout="wide")
 
-# --- ESTILOS NEÓN INDUSTRIAL (CSS) ---
+# --- ESTILO VISUAL (LAYOUT TIPO SIMIO) ---
 st.markdown("""
     <style>
-    @import url('https://googleapis.com');
-    .main { background-color: #0b0e14; color: #e0e0e0; font-family: 'Orbitron', sans-serif; }
-    .stApp { background: radial-gradient(circle, #1a1f2c 0%, #0b0e14 100%); }
-    .kpi-card { background: rgba(255, 255, 255, 0.05); padding: 20px; border-radius: 15px; border-top: 2px solid #00d4ff; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2); text-align: center; }
-    .station-box { background: rgba(0, 212, 255, 0.1); border: 1px solid #00d4ff; border-radius: 10px; padding: 15px; min-height: 150px; text-align: center; }
-    .neon-text { color: #00d4ff; text-shadow: 0 0 10px #00d4ff; font-weight: bold; }
+    .maquina { background-color: #f0f2f6; border: 2px solid #31333F; border-radius: 5px; padding: 10px; text-align: center; min-height: 100px; }
+    .banda { background-color: #262730; color: white; height: 10px; margin: 20px 0; border-radius: 5px; }
+    .gauge-label { font-size: 12px; font-weight: bold; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS DE NAVEGACIÓN ---
 if 'faceta' not in st.session_state: st.session_state.faceta = 'inicio'
 
-# --- FACETA 1: BIENVENIDA (MODERNA) ---
+# --- FACETA 1: INICIO ---
 if st.session_state.faceta == 'inicio':
-    st.markdown("<h1 style='text-align: center; color: #00d4ff;'>NEXUS INDUSTRIAL OS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>SISTEMA DE SIMULACIÓN DE GEMELO DIGITAL v23.0</p>", unsafe_allow_html=True)
-    
-    col_b1, col_b2, col_b3 = st.columns([1,2,1])
-    with col_b2:
-        st.info("💡 Este sistema utiliza algoritmos de costeo ABC y métricas OEE en tiempo real para optimizar la cadena de valor.")
-        if st.button("ACCEDER AL PANEL DE CONFIGURACIÓN"):
-            st.session_state.faceta = 'config'
-            st.rerun()
+    st.title("🏗️ Simulador Industrial Pro")
+    st.write("Diseña y ejecuta modelos de producción basados en eventos discretos.")
+    if st.button("Configurar Nuevo Modelo"):
+        st.session_state.faceta = 'config'
+        st.rerun()
 
 # --- FACETA 2: CONFIGURACIÓN ---
 elif st.session_state.faceta == 'config':
-    st.markdown("<h2 class='neon-text'>⚙️ CONFIGURACIÓN DE SISTEMA</h2>", unsafe_allow_html=True)
+    st.subheader("🛠️ Parámetros de Simulación")
     c1, c2 = st.columns(2)
     with c1:
-        st.write("### 💵 Parámetros Financieros")
-        c_mat = st.number_input("Costo Directo Material ($)", 10.0, 100.0, 25.0)
-        c_op = st.number_input("Carga Operativa ($/s)", 0.1, 10.0, 1.2)
-        v_final = st.number_input("Precio de Salida ($)", 50.0, 1000.0, 150.0)
+        n_lote = st.number_input("Piezas a procesar", 5, 50, 10)
+        t_maq = st.slider("Velocidad de Máquina (s)", 1, 5, 2)
     with c2:
-        st.write("### ⚙️ Parámetros de Planta")
-        n_pz = st.number_input("Lote de Producción", 5, 50, 10)
-        v_maq = st.slider("Velocidad de Ciclo (s)", 1, 5, 2)
-        risk = st.slider("Tolerancia de Fallo (%)", 0, 20, 5)
+        costo_mat = st.number_input("Costo Material ($)", 10.0, 100.0, 25.0)
+        precio_vta = st.number_input("Precio Venta ($)", 50.0, 500.0, 150.0)
 
-    if st.button("🚀 INICIALIZAR LÍNEA DE PRODUCCIÓN"):
-        st.session_state.params = {"mat": c_mat, "op": c_op, "v": v_final, "n": n_pz, "vel": v_maq, "risk": risk}
+    if st.button("▶️ Ejecutar Simulación"):
+        st.session_state.p = {"n": n_lote, "t": t_maq, "c": costo_mat, "v": precio_vta}
         st.session_state.faceta = 'sim'
         st.rerun()
 
-# --- FACETA 3: SIMULACIÓN (ESTILO DASHBOARD TESLA) ---
+# --- FACETA 3: SIMULACIÓN (ESTILO SIMIO) ---
 elif st.session_state.faceta == 'sim':
-    p = st.session_state.params
-    st.markdown("<h2 class='neon-text' style='text-align: center;'>📡 LIVE TELEMETRY FEED</h2>", unsafe_allow_html=True)
+    p = st.session_state.p
+    st.title("📈 Monitor de Planta en Ejecución")
     
-    # KPIs SUPERIORES
+    # KPIs Superiores
     k1, k2, k3 = st.columns(3)
-    met_cash = k1.empty()
-    met_oee = k2.empty()
-    met_step = k3.empty()
+    met_util = k1.empty()
+    met_yield = k2.empty()
+    met_prog = k3.empty()
 
+    # --- DISEÑO DE PLANTA (Inspirado en la imagen) ---
     st.write("---")
-    
-    # LÍNEA DE PRODUCCIÓN VISUAL (ISOMÉTRICA)
-    col_a, col_f, col_b, col_res = st.columns([2, 1, 2, 2])
-    v_a = col_a.empty()
-    v_f = col_f.empty()
-    v_b = col_b.empty()
-    v_r = col_res.empty()
+    # Fila de Medidores (Gauges)
+    g1, g2, g3 = st.columns(3)
+    gauge_corte = g1.empty()
+    gauge_ensam = g2.empty()
+    gauge_calidad = g3.empty()
 
-    # Lógica
-    cash, malas, historial = 0, 0, []
+    # Fila de Máquinas y Bandas
+    m_corte, b1, m_ensam, b2, m_almacen = st.columns([2, 3, 2, 3, 2])
+    
+    with m_corte: st.markdown('<div class="maquina">📦<br><b>GRANERO</b></div>', unsafe_allow_html=True)
+    v_corte = m_corte.empty()
+    
+    v_b1 = b1.empty() # Banda transportadora 1
+    
+    with m_ensam: st.markdown('<div class="maquina">⚙️<br><b>PROCESO</b></div>', unsafe_allow_html=True)
+    v_ensam = m_ensam.empty()
+    
+    v_b2 = b2.empty() # Banda transportadora 2
+    
+    with m_almacen: st.markdown('<div class="maquina">🏭<br><b>ALMACÉN</b></div>', unsafe_allow_html=True)
+    v_almacen = m_almacen.empty()
+
+    # Lógica de Ejecución
+    buenas, dinero = 0, 0
+    historial = []
 
     for i in range(1, int(p['n']) + 1):
-        sku = f"NXS-{i:03d}"
-        c_pz = p['mat']
+        sku = f"PZ-{i}"
         
-        # ETAPA A: CORTE (Blue Neon)
-        v_a.markdown(f"<div class='station-box'><h3 style='color:#00d4ff;'>🗜️ CNC UNIT</h3><p>PROCESSING: {sku}</p></div>", unsafe_allow_html=True)
-        v_b.markdown("<div class='station-box' style='opacity:0.3;'>🤖 ROBOT<br>IDLE</div>", unsafe_allow_html=True)
-        time.sleep(p['vel'])
-        c_pz += (p['vel'] * p['op'])
+        # 1. EN CORTE (Gauges se mueven)
+        gauge_corte.markdown(f"**Carga:** {'🟥' * 5} 100%")
+        v_corte.warning(f"Procesando {sku}...")
+        time.sleep(p['t'])
+        gauge_corte.markdown(f"**Carga:** {'⬜' * 5} 0%")
+        
+        # 2. EN BANDA 1 (Animación de puntos)
+        v_corte.write("Esperando...")
+        for b in [".", "..", "...", "📦", "..."]:
+            v_b1.markdown(f"<div class='banda' style='text-align:center;'>{b}</div>", unsafe_allow_html=True)
+            time.sleep(0.3)
+        v_b1.markdown('<div class="banda"></div>', unsafe_allow_html=True)
 
-        # ANIMACIÓN DE FLUJO
-        v_a.markdown("<div class='station-box'>🗜️ CNC UNIT<br>STANDBY</div>", unsafe_allow_html=True)
-        for d in ["▹", "▸▹", "▸▸▹", "▸▸▸▹", "📦"]:
-            v_f.markdown(f"<h1 style='text-align:center; color:#00d4ff;'>{d}</h1>", unsafe_allow_html=True)
-            time.sleep(0.2)
+        # 3. EN ENSAMBLE
+        gauge_ensam.markdown(f"**Carga:** {'🟧' * 5} 100%")
+        v_ensam.warning(f"Ensamblando {sku}...")
+        time.sleep(p['t'])
+        gauge_ensam.markdown(f"**Carga:** {'⬜' * 5} 0%")
 
-        # ETAPA B: ENSAMBLE (Orange Neon)
-        v_b.markdown(f"<div class='station-box' style='border-color:orange;'><h3 style='color:orange;'>🤖 ROBOT</h3><p>ASSEMBLING: {sku}</p></div>", unsafe_allow_html=True)
-        time.sleep(p['vel'])
-        c_pz += (p['vel'] * p['op'])
-
-        # CALIDAD
-        fail = (np.random.random() * 100) < p['risk']
-        if fail:
-            res, col_msg = "CRITICAL FAIL", "red"
-            malas += 1
-            util_pz = 0
-            v_r.error("🚨 SENSOR: REJECTED")
+        # 4. CALIDAD Y RESULTADO FINAL
+        v_ensam.write("Esperando...")
+        error = np.random.random() < 0.1
+        if not error:
+            buenas += 1
+            dinero += (p['v'] - p['c'])
+            v_almacen.success(f"Recibido: {sku}")
+            gauge_calidad.markdown(f"**Status:** ✅ OK")
         else:
-            res, col_msg = "PASSED", "#00ff00"
-            util_pz = p['v'] - c_pz
-            cash += util_pz
-            v_r.success("💎 SENSOR: QUALITY OK")
+            v_almacen.error(f"Rechazado: {sku}")
+            gauge_calidad.markdown(f"**Status:** ❌ FAIL")
 
-        # KPIS
-        met_cash.metric("NET MARGIN (USD)", f"${round(cash, 2)}")
-        met_oee.metric("SYSTEM OEE", f"{round(((i-malas)/i)*100, 1)}%")
-        met_step.metric("BATCH PROGRESS", f"{i}/{int(p['n'])}")
+        # Actualizar KPIs
+        met_util.metric("Utilidad Acumulada", f"${round(dinero, 2)}")
+        met_yield.metric("Calidad (Yield)", f"{round((buenas/i)*100, 1)}%")
+        met_prog.metric("Progreso", f"{i}/{int(p['n'])}")
         
-        historial.append({"SKU": sku, "Status": res, "Unit_Margin": round(util_pz, 2)})
         time.sleep(0.5)
 
     st.balloons()
-    
-    # REPORTE Y REINICIO
-    df = pd.DataFrame(historial)
-    csv = df.to_csv(index=False).encode('utf-8')
-    c_down, c_reset = st.columns(2)
-    with c_down: st.download_button("📥 EXPORT SYSTEM LOG (CSV)", csv, "nexus_report.csv", "text/csv")
-    with c_reset: 
-        if st.button("🔄 RESET SYSTEM"): 
-            st.session_state.faceta = 'inicio'
-            st.rerun()
+    if st.button("Cerrar Turno y Reiniciar"):
+        st.session_state.faceta = 'inicio'
+        st.rerun()
