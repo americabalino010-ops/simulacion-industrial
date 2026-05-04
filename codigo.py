@@ -1,110 +1,143 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
 import time
 
-# --- CONFIGURACIÓN DE PANTALLA ---
-st.set_page_config(page_title="Industrial Pixel Arcade", layout="centered")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Industrial Tycoon V42", layout="wide")
 
-# --- ESTILO "RETRO ARCADE" (CSS) ---
+# --- DISEÑO VISUAL DE VIDEOJUEGO (CSS) ---
 st.markdown("""
     <style>
     @import url('https://googleapis.com');
 
-    .stApp { background-color: #0d0d1a; }
+    .stApp { background-color: #2e2e2e; }
     
-    /* El marco de la pantalla del juego */
-    .game-screen {
-        border: 8px solid #3e3e3e;
-        background-color: #1a1a2e;
-        border-radius: 15px;
-        padding: 10px;
-        box-shadow: 0 0 20px #00d4ff;
+    /* Pantalla de juego */
+    .game-viewport {
+        background-color: #4a4a4a; /* Suelo de metal */
+        border: 6px solid #1a1a1a;
+        padding: 0px;
+        display: block;
+        background-image: linear-gradient(#555 1px, transparent 1px), linear-gradient(90deg, #555 1px, transparent 1px);
+        background-size: 50px 50px; /* Cuadrícula de construcción */
     }
 
-    /* Las baldosas del suelo */
-    .tile {
-        height: 100px;
-        border: 1px solid #16213e;
+    /* Baldosas de máquinas */
+    .pixel-tile {
+        height: 140px;
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
-        background-image: radial-gradient(#242444 1px, transparent 1px);
-        background-size: 10px 10px;
+        border: 1px solid #333;
     }
 
-    /* Tipografía Retro */
-    .retro-text {
-        font-family: 'Press Start 2P', cursive;
-        color: #00d4ff;
-        font-size: 10px;
-        text-align: center;
+    /* HUD de cálculos (Heads-Up Display) */
+    .hud-panel {
+        background-color: #2c3e50;
+        border: 4px solid #ecf0f1;
+        color: #f1c40f;
+        padding: 15px;
+        font-family: 'VT323', monospace;
+        font-size: 22px;
+        border-radius: 10px;
+        box-shadow: 5px 5px 0px #000;
     }
-    
-    /* Animación de los sprites */
-    .sprite { font-size: 40px; text-shadow: 2px 2px #000; }
+
+    .sprite-img { font-size: 50px; filter: drop-shadow(4px 4px 0px #000); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LÓGICA DE MOVIMIENTO ---
-if 'px' not in st.session_state: st.session_state.px = 0 # Eje X (0, 1, 2)
-if 'py' not in st.session_state: st.session_state.py = 0 # Eje Y (0, 1, 2)
+# --- ESTADO DEL JUEGO ---
+if 'step' not in st.session_state: st.session_state.step = "setup"
 
-# --- PANEL DE CONTROL (JOYSTICK) ---
-st.sidebar.markdown("<h2 class='retro-text'>CONTROLLER</h2>", unsafe_allow_html=True)
-c1, c2, c3 = st.sidebar.columns(3)
-if c2.button("▲"): st.session_state.py = max(0, st.session_state.py - 1)
-c4, c5, c6 = st.sidebar.columns(3)
-if c4.button("◀"): st.session_state.px = max(0, st.session_state.px - 1)
-if c5.button("▼"): st.session_state.py = min(2, st.session_state.py + 1)
-if c6.button("▶"): st.session_state.px = min(2, st.session_state.px + 1)
-
-# --- DIBUJAR EL "NIVEL" (PLANTA) ---
-st.markdown("<h1 class='retro-text' style='font-size:20px;'>FACTORY LEVEL 01</h1>", unsafe_allow_html=True)
-
-# Aquí definimos dónde están las máquinas en el "mapa"
-# (Fila, Columna): Tipo de máquina
-maquinas = {
-    (0, 0): {"icon": "⚙️", "name": "CORTE"},
-    (0, 2): {"icon": "🦾", "name": "ROBOT"},
-    (2, 2): {"icon": "🏭", "name": "OUT"}
-}
-
-def render_factory():
-    with st.container():
-        st.markdown('<div class="game-screen">', unsafe_allow_html=True)
-        for r in range(3):
-            cols = st.columns(3)
-            for c in range(3):
-                with cols[c]:
-                    # ¿Está el jugador aquí?
-                    player = "👷" if (st.session_state.px == c and st.session_state.py == r) else ""
-                    # ¿Hay una máquina aquí?
-                    obj = maquinas.get((r, c), {"icon": ""})["icon"]
-                    
-                    st.markdown(f"""
-                        <div class="tile">
-                            <span class="sprite">{obj}</span>
-                            <span class="sprite" style="position:absolute;">{player}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-render_factory()
-
-# --- SIMULACIÓN ANIMADA (ESTO ES LO QUE DA FLUIDEZ) ---
-if st.sidebar.button("▶ START MISSION"):
-    status = st.empty()
-    # Para que se vea fluido, movemos una "pieza" por el mapa
-    # Definimos la ruta: (0,0) -> (0,1) -> (0,2) -> (1,2) -> (2,2)
-    ruta = [(0,0), (0,1), (0,2), (1,2), (2,2)]
+# --- FACETA 1: MENÚ PRINCIPAL ---
+if st.session_state.step == "setup":
+    st.markdown("<h1 style='text-align:center; color:#f1c40f; font-family:VT323; font-size:60px;'>INDUSTRIAL TYCOON</h1>", unsafe_allow_html=True)
     
-    for pos in ruta:
-        status.markdown(f"<p class='retro-text'>MOVING OBJECT TO {pos}...</p>", unsafe_allow_html=True)
-        # Aquí es donde ocurre la magia: 
-        # En lugar de solo dibujar al final, dibujamos la pieza 📦 moviéndose
-        # (Nota: Por limitaciones de Streamlit, aquí simulamos el flujo de datos)
-        time.sleep(0.6)
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.markdown("<div class='hud-panel'>🔧 AJUSTES DE PRODUCCIÓN<br>", unsafe_allow_html=True)
+        lote = st.number_input("Lote de piezas", 5, 20, 5)
+        t_ciclo = st.slider("Velocidad Maquinaria", 1, 4, 2)
+    with col_r:
+        st.markdown("<div class='hud-panel'>💰 AJUSTES FINANCIEROS<br>", unsafe_allow_html=True)
+        costo = st.number_input("Costo Material", 10, 100, 25)
+        precio = st.number_input("Precio Venta", 50, 500, 150)
     
-    st.balloons()
-    status.markdown("<p class='retro-text' style='color:#00ff00;'>MISSION COMPLETE!</p>", unsafe_allow_html=True)
+    if st.button("▶️ START MISSION"):
+        st.session_state.data = {"lote": lote, "t": t_ciclo, "costo": costo, "precio": precio}
+        st.session_state.step = "game"
+        st.rerun()
 
+# --- FACETA 2: JUEGO Y CÁLCULOS ---
+elif st.session_state.step == "game":
+    d = st.session_state.data
+    
+    # HUD SUPERIOR (Cálculos en tiempo real)
+    h1, h2, h3 = st.columns(3)
+    cash_hud = h1.empty()
+    yield_hud = h2.empty()
+    status_hud = h3.empty()
+
+    # VIEWPORT (El mapa de la fábrica)
+    st.markdown('<div class="game-viewport">', unsafe_allow_html=True)
+    row1 = st.columns(3)
+    row2 = st.columns(3)
+    row3 = st.columns(3)
+    
+    # Creamos un mapa de placeholders para animar
+    placeholders = {
+        (0,0): row1[0].empty(), (0,2): row1[2].empty(),
+        (2,2): row3[2].empty()
+    }
+    
+    # Dibujar decoraciones estáticas en el grid
+    for c in [1]: row1[c].markdown('<div class="pixel-tile">⛓️</div>', unsafe_allow_html=True)
+    for c in [0,1,2]: row2[c].markdown('<div class="pixel-tile"></div>', unsafe_allow_html=True)
+
+    # Lógica de Simulación
+    cash, buenas = 0, 0
+    
+    for i in range(1, d['lote'] + 1):
+        sku = f"PZ-{i}"
+        
+        # 1. ESTACIÓN: CORTE
+        placeholders[(0,0)].markdown('<div class="pixel-tile"><span class="sprite-img">👷⚙️</span><br>PROCESANDO...</div>', unsafe_allow_html=True)
+        status_hud.markdown(f"<div class='hud-panel'>STATUS: {sku} IN CORTE</div>", unsafe_allow_html=True)
+        time.sleep(d['t'])
+        
+        # 2. MOVIMIENTO (EL INGENIERO "CAMINA")
+        placeholders[(0,0)].markdown('<div class="pixel-tile">⚙️</div>', unsafe_allow_html=True)
+        status_hud.markdown(f"<div class='hud-panel'>STATUS: MOVING TO ASSEMBLY</div>", unsafe_allow_html=True)
+        time.sleep(0.5)
+
+        # 3. ESTACIÓN: ENSAMBLE
+        placeholders[(0,2)].markdown('<div class="pixel-tile"><span class="sprite-img">👷🤖</span><br>ENSAMBLANDO...</div>', unsafe_allow_html=True)
+        time.sleep(d['t'])
+        
+        # CÁLCULOS FINALES POR PIEZA
+        error = np.random.random() < 0.1
+        if not error:
+            buenas += 1
+            cash += (d['precio'] - d['costo'])
+            res_icon = "📦✅"
+        else:
+            cash -= d['costo']
+            res_icon = "🗑️❌"
+            
+        # 4. SALIDA
+        placeholders[(0,2)].markdown('<div class="pixel-tile">🤖</div>', unsafe_allow_html=True)
+        placeholders[(2,2)].markdown(f'<div class="pixel-tile"><span class="sprite-img">{res_icon}</span></div>', unsafe_allow_html=True)
+        
+        # ACTUALIZAR HUD
+        cash_hud.markdown(f"<div class='hud-panel'>CASH: ${round(cash,2)}</div>", unsafe_allow_html=True)
+        yield_hud.markdown(f"<div class='hud-panel'>YIELD: {round((buenas/i)*100,1)}%</div>", unsafe_allow_html=True)
+        
+        time.sleep(1)
+        placeholders[(2,2)].empty()
+
+    if st.button("🎮 RESTART"):
+        st.session_state.step = "setup"
+        st.rerun()
