@@ -4,124 +4,158 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Simulador de Planta V24", layout="wide")
+st.set_page_config(page_title="Industrial Designer V25", layout="wide")
 
-# --- ESTILO VISUAL (LAYOUT TIPO SIMIO) ---
+# --- ESTILOS CSS (DISEÑO TIPO SIMIO) ---
 st.markdown("""
     <style>
-    .maquina { background-color: #f0f2f6; border: 2px solid #31333F; border-radius: 5px; padding: 10px; text-align: center; min-height: 100px; }
-    .banda { background-color: #262730; color: white; height: 10px; margin: 20px 0; border-radius: 5px; }
-    .gauge-label { font-size: 12px; font-weight: bold; text-align: center; }
+    .stApp { background-color: #f4f4f9; }
+    .estacion { 
+        background-color: #ffffff; 
+        border: 2px solid #2c3e50; 
+        border-radius: 10px; 
+        padding: 15px; 
+        text-align: center; 
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    }
+    .banda { 
+        background-color: #34495e; 
+        height: 12px; 
+        margin-top: 50px; 
+        border-radius: 5px; 
+    }
+    .gauge { font-size: 20px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-if 'faceta' not in st.session_state: st.session_state.faceta = 'inicio'
+# --- BARRA LATERAL: PANEL DE CONTROL (TOOLS) ---
+st.sidebar.title("🛠️ Facility Tools")
+st.sidebar.markdown("---")
 
-# --- FACETA 1: INICIO ---
-if st.session_state.faceta == 'inicio':
-    st.title("🏗️ Simulador Industrial Pro")
-    st.write("Diseña y ejecuta modelos de producción basados en eventos discretos.")
-    if st.button("Configurar Nuevo Modelo"):
-        st.session_state.faceta = 'config'
-        st.rerun()
+# 1. Configuración de entrada
+st.sidebar.subheader("📥 Input de Datos")
+n_lote = st.sidebar.number_input("Cantidad de Piezas", 5, 50, 10)
+t_proceso = st.sidebar.slider("Tiempo de Ciclo (s)", 0.5, 4.0, 1.5)
 
-# --- FACETA 2: CONFIGURACIÓN ---
-elif st.session_state.faceta == 'config':
-    st.subheader("🛠️ Parámetros de Simulación")
-    c1, c2 = st.columns(2)
-    with c1:
-        n_lote = st.number_input("Piezas a procesar", 5, 50, 10)
-        t_maq = st.slider("Velocidad de Máquina (s)", 1, 5, 2)
-    with c2:
-        costo_mat = st.number_input("Costo Material ($)", 10.0, 100.0, 25.0)
-        precio_vta = st.number_input("Precio Venta ($)", 50.0, 500.0, 150.0)
+# 2. Configuración de costos
+st.sidebar.subheader("💰 Parámetros Económicos")
+costo_mat = st.sidebar.number_input("Costo Material ($)", 5.0, 50.0, 15.0)
+precio_vta = st.sidebar.number_input("Precio Venta ($)", 20.0, 200.0, 80.0)
 
-    if st.button("▶️ Ejecutar Simulación"):
-        st.session_state.p = {"n": n_lote, "t": t_maq, "c": costo_mat, "v": precio_vta}
-        st.session_state.faceta = 'sim'
-        st.rerun()
+# 3. Probabilidades
+st.sidebar.subheader("📉 Análisis de Riesgo")
+prob_error = st.sidebar.slider("Tasa de Fallo (%)", 0, 25, 5)
 
-# --- FACETA 3: SIMULACIÓN (ESTILO SIMIO) ---
-elif st.session_state.faceta == 'sim':
-    p = st.session_state.p
-    st.title("📈 Monitor de Planta en Ejecución")
-    
-    # KPIs Superiores
-    k1, k2, k3 = st.columns(3)
+st.sidebar.markdown("---")
+iniciar = st.sidebar.button("▶️ RUN SIMULATION", use_container_width=True)
+reiniciar = st.sidebar.button("🔄 RESET SYSTEM", use_container_width=True)
+
+# --- PANTALLA PRINCIPAL: LIENZO DE SIMULACIÓN ---
+st.title("🏭 Planta de Producción: Vista de Planta (Top-Down)")
+
+if iniciar:
+    # 1. KPIs Superiores (Dashboard de Control)
+    k1, k2, k3, k4 = st.columns(4)
     met_util = k1.empty()
     met_yield = k2.empty()
-    met_prog = k3.empty()
+    met_scrap = k3.empty()
+    met_prog = k4.empty()
 
-    # --- DISEÑO DE PLANTA (Inspirado en la imagen) ---
     st.write("---")
-    # Fila de Medidores (Gauges)
-    g1, g2, g3 = st.columns(3)
-    gauge_corte = g1.empty()
-    gauge_ensam = g2.empty()
-    gauge_calidad = g3.empty()
 
-    # Fila de Máquinas y Bandas
-    m_corte, b1, m_ensam, b2, m_almacen = st.columns([2, 3, 2, 3, 2])
-    
-    with m_corte: st.markdown('<div class="maquina">📦<br><b>GRANERO</b></div>', unsafe_allow_html=True)
-    v_corte = m_corte.empty()
-    
-    v_b1 = b1.empty() # Banda transportadora 1
-    
-    with m_ensam: st.markdown('<div class="maquina">⚙️<br><b>PROCESO</b></div>', unsafe_allow_html=True)
-    v_ensam = m_ensam.empty()
-    
-    v_b2 = b2.empty() # Banda transportadora 2
-    
-    with m_almacen: st.markdown('<div class="maquina">🏭<br><b>ALMACÉN</b></div>', unsafe_allow_html=True)
-    v_almacen = m_almacen.empty()
+    # 2. Medidores de Aguja (Estilo Simio)
+    st.write("📊 **Estado de Carga de Estaciones**")
+    g1, g2, g3, g4, g5 = st.columns(5)
+    gauge_a = g1.empty()
+    gauge_b = g3.empty()
+    gauge_c = g5.empty()
 
-    # Lógica de Ejecución
-    buenas, dinero = 0, 0
+    # 3. Diseño de la Línea Física
+    # Segmentamos el espacio: Estación -> Banda -> Estación -> Banda -> Salida
+    m_a, b1, m_b, b2, m_c = st.columns([2, 3, 2, 3, 2])
+
+    with m_a:
+        st.markdown('<div class="estacion">⚙️<br><b>DESPULPADO</b></div>', unsafe_allow_html=True)
+        v_a = st.empty()
+
+    v_b1 = b1.empty() # Banda transportadora
+
+    with m_b:
+        st.markdown('<div class="estacion">🌀<br><b>MOLIENDA</b></div>', unsafe_allow_html=True)
+        v_b = st.empty()
+
+    v_b2 = b2.empty() # Banda transportadora
+
+    with m_c:
+        st.markdown('<div class="estacion">📦<br><b>ENSACADO</b></div>', unsafe_allow_html=True)
+        v_c = st.empty()
+
+    log_final = st.empty()
+
+    # --- LÓGICA DE SIMULACIÓN ---
+    buenas, fallas, dinero, scrap = 0, 0, 0, 0
     historial = []
 
-    for i in range(1, int(p['n']) + 1):
-        sku = f"PZ-{i}"
+    for i in range(1, n_lote + 1):
+        sku = f"P-{i}"
         
-        # 1. EN CORTE (Gauges se mueven)
-        gauge_corte.markdown(f"**Carga:** {'🟥' * 5} 100%")
-        v_corte.warning(f"Procesando {sku}...")
-        time.sleep(p['t'])
-        gauge_corte.markdown(f"**Carga:** {'⬜' * 5} 0%")
-        
-        # 2. EN BANDA 1 (Animación de puntos)
-        v_corte.write("Esperando...")
-        for b in [".", "..", "...", "📦", "..."]:
-            v_b1.markdown(f"<div class='banda' style='text-align:center;'>{b}</div>", unsafe_allow_html=True)
-            time.sleep(0.3)
+        # FASE 1: DESPULPADO
+        gauge_a.markdown("<p class='gauge'>🔴 100%</p>", unsafe_allow_html=True)
+        v_a.info(f"Ocupado: {sku}")
+        time.sleep(t_proceso)
+        gauge_a.markdown("<p class='gauge'>⚪ 0%</p>", unsafe_allow_html=True)
+        v_a.write("Libre")
+
+        # TRÁNSITO 1 (Animación de la pieza por la banda)
+        for d in [".", "..", "...", "📦", "...", "✔"]:
+            v_b1.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
+            time.sleep(0.2)
         v_b1.markdown('<div class="banda"></div>', unsafe_allow_html=True)
 
-        # 3. EN ENSAMBLE
-        gauge_ensam.markdown(f"**Carga:** {'🟧' * 5} 100%")
-        v_ensam.warning(f"Ensamblando {sku}...")
-        time.sleep(p['t'])
-        gauge_ensam.markdown(f"**Carga:** {'⬜' * 5} 0%")
+        # FASE 2: MOLIENDA
+        gauge_b.markdown("<p class='gauge'>🟠 100%</p>", unsafe_allow_html=True)
+        v_b.warning(f"Ocupado: {sku}")
+        time.sleep(t_proceso)
+        gauge_b.markdown("<p class='gauge'>⚪ 0%</p>", unsafe_allow_html=True)
+        v_b.write("Libre")
 
-        # 4. CALIDAD Y RESULTADO FINAL
-        v_ensam.write("Esperando...")
-        error = np.random.random() < 0.1
-        if not error:
-            buenas += 1
-            dinero += (p['v'] - p['c'])
-            v_almacen.success(f"Recibido: {sku}")
-            gauge_calidad.markdown(f"**Status:** ✅ OK")
-        else:
-            v_almacen.error(f"Rechazado: {sku}")
-            gauge_calidad.markdown(f"**Status:** ❌ FAIL")
+        # TRÁNSITO 2
+        for d in [".", "..", "...", "📦", "...", "✔"]:
+            v_b2.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
+            time.sleep(0.2)
+        v_b2.markdown('<div class="banda"></div>', unsafe_allow_html=True)
 
-        # Actualizar KPIs
-        met_util.metric("Utilidad Acumulada", f"${round(dinero, 2)}")
-        met_yield.metric("Calidad (Yield)", f"{round((buenas/i)*100, 1)}%")
-        met_prog.metric("Progreso", f"{i}/{int(p['n'])}")
+        # FASE 3: CALIDAD / ENSACADO
+        error = (np.random.random() * 100) < prob_error
+        costo_total_pz = costo_mat + (t_proceso * 2 * 1.5) # Material + Energía en 2 máquinas
         
+        if error:
+            fallas += 1
+            scrap += costo_total_pz
+            v_c.error(f"❌ FALLO: {sku}")
+            res = "RECHAZADA"
+        else:
+            buenas += 1
+            ganancia = precio_vta - costo_total_pz
+            dinero += ganancia
+            v_c.success(f"✅ OK: {sku}")
+            res = "OK"
+
+        # ACTUALIZAR KPIs
+        met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
+        met_yield.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
+        met_scrap.metric("Costo Scrap", f"${round(scrap, 2)}", delta_color="inverse")
+        met_prog.metric("Avance", f"{i}/{n_lote}")
+
+        historial.append({"SKU": sku, "Estado": res, "Margen": round(precio_vta - costo_total_pz if not error else -costo_total_pz, 2)})
         time.sleep(0.5)
 
     st.balloons()
-    if st.button("Cerrar Turno y Reiniciar"):
-        st.session_state.faceta = 'inicio'
-        st.rerun()
+    st.write("### 📝 Reporte Final de Turno")
+    st.dataframe(pd.DataFrame(historial), use_container_width=True)
+
+elif reiniciar:
+    st.rerun()
+
+else:
+    st.info("👈 Configura los parámetros en el panel de herramientas y presiona 'RUN SIMULATION'")
