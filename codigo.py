@@ -4,161 +4,130 @@ import numpy as np
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Industrial Designer V27", layout="wide")
+st.set_page_config(page_title="Factory Architect V29", layout="wide")
 
-# --- ESTILOS CSS CORREGIDOS (ALTO CONTRASTE) ---
+# --- ESTILOS ---
 st.markdown("""
     <style>
     .stApp { background-color: #f0f2f6; }
-    h1, h2, h3 { color: #1e3a8a !important; font-weight: bold; }
-    .estacion { 
+    .estacion-box { 
         background-color: #ffffff; 
         border: 3px solid #1e3a8a; 
         border-radius: 12px; 
-        padding: 20px; 
+        padding: 15px; 
         text-align: center; 
-        box-shadow: 4px 4px 10px rgba(0,0,0,0.1);
-        color: #111827;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
     }
-    .banda { 
-        background-color: #374151; 
-        height: 15px; 
-        margin-top: 60px; 
-        border-radius: 8px;
-        border: 1px solid #111827;
-    }
-    .gauge { 
-        font-size: 22px; 
-        font-weight: bold; 
-        color: #1e3a8a;
-    }
-    [data-testid="stMetricValue"] { color: #1e3a8a !important; }
-    /* Ajuste para que los textos de la barra lateral se vean */
-    .css-17l2qt2 { color: #ffffff !important; } 
+    h1, h2, h3 { color: #1e3a8a !important; font-weight: bold; }
+    .stMetric { background-color: #ffffff; border-radius: 10px; padding: 10px; border: 1px solid #dee2e6; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BARRA LATERAL ---
-st.sidebar.title("🛠️ Facility Tools")
+# --- PANEL DE DISEÑO (SIDEBAR) ---
+st.sidebar.title("🏗️ Factory Architect")
 st.sidebar.markdown("---")
 
-st.sidebar.subheader("📥 Input de Datos")
-n_lote = st.sidebar.number_input("Cantidad de Piezas", 5, 50, 10)
-t_proceso = st.sidebar.slider("Tiempo de Ciclo (s)", 0.5, 4.0, 1.5)
+# 1. Selección de Estaciones
+st.sidebar.subheader("📐 Diseño de Línea")
+estaciones_seleccionadas = st.sidebar.multiselect(
+    "Añade estaciones a tu flujo:",
+    ["Corte CNC", "Pulido", "Pintura", "Ensamble", "Inspección"],
+    default=["Corte CNC", "Ensamble"]
+)
 
+# 2. Configuración Individual por Estación
+config_estaciones = {}
+if estaciones_seleccionadas:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚙️ Ajustes por Estación")
+    for est in estaciones_seleccionadas:
+        with st.sidebar.expander(f"Parámetros: {est}"):
+            t_ciclo = st.slider(f"Tiempo de Ciclo (s) - {est}", 0.5, 5.0, 2.0, key=f"t_{est}")
+            p_error = st.slider(f"Tasa de Fallo (%) - {est}", 0, 20, 2, key=f"e_{est}")
+            config_estaciones[est] = {"tiempo": t_ciclo, "error": p_error}
+
+# 3. Parámetros Globales
+st.sidebar.markdown("---")
 st.sidebar.subheader("💰 Parámetros Económicos")
-costo_mat = st.sidebar.number_input("Costo Material ($)", 5.0, 50.0, 15.0)
-precio_vta = st.sidebar.number_input("Precio Venta ($)", 20.0, 200.0, 80.0)
-
-st.sidebar.subheader("📉 Análisis de Riesgo")
-prob_error = st.sidebar.slider("Tasa de Fallo (%)", 0, 25, 5)
-
-st.sidebar.markdown("---")
-iniciar = st.sidebar.button("▶️ RUN SIMULATION", use_container_width=True)
-reiniciar = st.sidebar.button("🔄 RESET SYSTEM", use_container_width=True)
+n_lote = st.sidebar.number_input("Lote de Producción", 5, 50, 10)
+c_mat = st.sidebar.number_input("Costo Materia Prima ($)", 10.0, 100.0, 25.0)
+v_precio = st.sidebar.number_input("Precio Venta Final ($)", 50.0, 500.0, 150.0)
 
 # --- PANTALLA PRINCIPAL ---
-st.title("🏭 Planta de Producción: Vista de Planta")
-st.write("---")
+st.title("🏭 Constructor de Planta Dinámico")
 
-if iniciar:
-    # KPIs Superiores
-    k1, k2, k3, k4 = st.columns(4)
-    met_util = k1.empty()
-    met_yield = k2.empty()
-    met_scrap = k3.empty()
-    met_prog = k4.empty()
-
-    st.write("### 🧩 Monitor de Línea")
-    
-    # 1. Medidores (Gauges) - CORREGIDO
-    cols_g = st.columns(5)
-    gauge_a = cols_g[0].empty()
-    gauge_b = cols_g[2].empty()
-    gauge_c = cols_g[4].empty()
-
-    # 2. Diseño de la Línea - CORREGIDO (Aquí estaba el error)
-    m_a, b1, m_b, b2, m_c = st.columns(5) # <-- Agregado el (5)
-
-    with m_a:
-        st.markdown('<div class="estacion">⚙️<br><b>DESPULPADO</b></div>', unsafe_allow_html=True)
-        v_a = st.empty()
-
-    with b1: v_b1 = st.empty()
-
-    with m_b:
-        st.markdown('<div class="estacion">🌀<br><b>MOLIENDA</b></div>', unsafe_allow_html=True)
-        v_b = st.empty()
-
-    with b2: v_b2 = st.empty()
-
-    with m_c:
-        st.markdown('<div class="estacion">📦<br><b>ENSACADO</b></div>', unsafe_allow_html=True)
-        v_c = st.empty()
-
-    log_historial = st.empty()
-
-    # --- LÓGICA ---
-    buenas, fallas, dinero, scrap = 0, 0, 0, 0
-    historial = []
-
-    for i in range(1, n_lote + 1):
-        sku = f"P-{i}"
-        
-        # FASE 1
-        gauge_a.markdown("<p class='gauge'>🔴 100%</p>", unsafe_allow_html=True)
-        v_a.info(f"Ocupado: {sku}")
-        time.sleep(t_proceso)
-        gauge_a.markdown("<p class='gauge'>⚪ 0%</p>", unsafe_allow_html=True)
-        v_a.write("Esperando...")
-
-        # TRÁNSITO 1
-        for d in [".", "..", "...", "📦", "...", "✔"]:
-            v_b1.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
-            time.sleep(0.1)
-        v_b1.markdown('<div class="banda"></div>', unsafe_allow_html=True)
-
-        # FASE 2
-        gauge_b.markdown("<p class='gauge'>🟧 100%</p>", unsafe_allow_html=True)
-        v_b.warning(f"Ocupado: {sku}")
-        time.sleep(t_proceso)
-        gauge_b.markdown("<p class='gauge'>⚪ 0%</p>", unsafe_allow_html=True)
-        v_b.write("Esperando...")
-
-        # TRÁNSITO 2
-        for d in [".", "..", "...", "📦", "...", "✔"]:
-            v_b2.markdown(f"<div class='banda' style='text-align:center; color:white;'>{d}</div>", unsafe_allow_html=True)
-            time.sleep(0.1)
-        v_b2.markdown('<div class="banda"></div>', unsafe_allow_html=True)
-
-        # FASE 3
-        error = (np.random.random() * 100) < prob_error
-        costo_pz = costo_mat + (t_proceso * 2 * 1.5)
-        
-        if error:
-            fallas += 1
-            scrap += costo_pz
-            v_c.error(f"❌ FALLO")
-            res = "RECHAZADA"
-        else:
-            buenas += 1
-            dinero += (precio_vta - costo_pz)
-            v_c.success(f"✅ OK")
-            res = "OK"
-
-        # KPIs
-        met_util.metric("Utilidad Neta", f"${round(dinero, 2)}")
-        met_yield.metric("OEE (Calidad)", f"{round((buenas/i)*100, 1)}%")
-        met_scrap.metric("Costo Scrap", f"${round(scrap, 2)}", delta_color="inverse")
-        met_prog.metric("Avance", f"{i}/{n_lote}")
-
-        historial.append({"SKU": sku, "Estado": res, "Margen": round(precio_vta - costo_pz if not error else -costo_pz, 2)})
-        log_historial.dataframe(pd.DataFrame(historial).tail(5), use_container_width=True)
-
-    st.balloons()
-
-elif reiniciar:
-    st.rerun()
-
+if not estaciones_seleccionadas:
+    st.info("👈 Selecciona estaciones en el panel izquierdo para comenzar a diseñar tu planta.")
 else:
-    st.info("👈 Configura los parámetros en el panel de herramientas y presiona 'RUN SIMULATION'")
+    # Mostrar el flujo diseñado
+    st.write(f"### 🧬 Secuencia de Producción: {' ⮕ '.join(estaciones_seleccionadas)}")
+    
+    if st.sidebar.button("▶️ EJECUTAR SIMULACIÓN PERSONALIZADA", use_container_width=True):
+        # Contenedores de KPIs
+        k1, k2, k3, k4 = st.columns(4)
+        met_util = k1.empty()
+        met_oee = k2.empty()
+        met_scrap = k3.empty()
+        met_prog = k4.empty()
+
+        st.write("---")
+        
+        # Dibujar Layout de Planta
+        columnas_viz = st.columns(len(estaciones_seleccionadas))
+        placeholder_viz = []
+        for idx, est in enumerate(estaciones_seleccionadas):
+            with columnas_viz[idx]:
+                st.markdown(f'<div class="estacion-box"><b>{est}</b></div>', unsafe_allow_html=True)
+                placeholder_viz.append(st.empty())
+
+        # --- LÓGICA DE SIMULACIÓN ---
+        utilidad_total, scrap_total, buenas = 0, 0, 0
+        historial = []
+
+        for i in range(1, n_lote + 1):
+            sku = f"PZ-{i}"
+            costo_acumulado = c_mat
+            fallo_en_pieza = False
+            
+            # Recorrido por cada estación diseñada
+            for idx, est in enumerate(estaciones_seleccionadas):
+                placeholder_viz[idx].info(f"Procesando {sku}...")
+                
+                # Cálculos basados en los sliders del usuario
+                t_est = config_estaciones[est]["tiempo"]
+                e_est = config_estaciones[est]["error"]
+                
+                # Cada segundo de máquina cuesta $2.0 (Energía/Mano de Obra)
+                costo_acumulado += (t_est * 2.0)
+                
+                time.sleep(1) # Simulación de tiempo visual
+                
+                # Verificar si falla en esta estación
+                if (np.random.random() * 100) < e_est:
+                    fallo_en_pieza = True
+                    placeholder_viz[idx].error("❌ FALLO")
+                    break # Se detiene el proceso si falla
+                else:
+                    placeholder_viz[idx].success("✅ LISTO")
+
+            # Resultado Final
+            if fallo_en_pieza:
+                scrap_total += costo_acumulado
+                res = "RECHAZADA"
+            else:
+                buenas += 1
+                utilidad_total += (v_precio - costo_acumulado)
+                res = "OK"
+
+            # Actualizar KPIs
+            met_util.metric("Utilidad Neta", f"${round(utilidad_total, 2)}")
+            met_oee.metric("Calidad (Yield)", f"{round((buenas/i)*100, 1)}%")
+            met_scrap.metric("Costo Scrap", f"${round(scrap_total, 2)}", delta_color="inverse")
+            met_prog.metric("Avance", f"{i}/{n_lote}")
+            
+            historial.append({"SKU": sku, "Estado": res, "Costo Final": round(costo_acumulado, 2)})
+            time.sleep(0.5)
+
+        st.balloons()
+        st.write("### 📝 Reporte de Diseño de Línea")
+        st.dataframe(pd.DataFrame(historial), use_container_width=True)
